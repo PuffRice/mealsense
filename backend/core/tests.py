@@ -88,6 +88,19 @@ class MealApiTests(TestCase):
             self.assertEqual(response.status_code, 201, response.content)
             image_id = response.json()['image_id']
             self.assertNotIn('private-family-photo', FoodImage.objects.get(pk=image_id).file.name)
-            self.assertEqual(self.client.get(f'/api/v1/images/{image_id}/').status_code, 200)
+            img_res = self.client.get(f'/api/v1/images/{image_id}/')
+            self.assertEqual(img_res.status_code, 200)
+            img_res.close()
             self.client.logout()
             self.assertEqual(self.client.get(f'/api/v1/images/{image_id}/').status_code, 403)
+
+    def test_admin_models_registered_and_accessible(self):
+        self.user.is_staff = True
+        self.user.is_superuser = True
+        self.user.save()
+        self.client.force_login(self.user)
+        res = self.client.get('/admin/', HTTP_HOST='localhost')
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, 'MealSense')
+        self.assertContains(res, 'Foods')
+        self.assertContains(res, 'Meals')
