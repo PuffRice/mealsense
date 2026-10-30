@@ -1,0 +1,96 @@
+import type { Daily, Food, Meal, MealInput, User } from "./types";
+
+let csrf = "";
+export async function initCsrf() {
+  const response = await fetch("/api/v1/auth/csrf/", {
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error("Cannot connect to MealSense server.");
+  csrf = (await response.json()).csrfToken;
+}
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = init.method || "GET";
+  if (method !== "GET" && !csrf) await initCsrf();
+  const headers = new Headers(init.headers);
+  if (!(init.body instanceof FormData) && init.body)
+    headers.set("Content-Type", "application/json");
+  if (method !== "GET") headers.set("X-CSRFToken", csrf);
+  let response: Response;
+  try {
+    response = await fetch(`/api/v1${path}`, {
+      ...init,
+      headers,
+      credentials: "same-origin",
+    });
+  } catch {
+    throw new Error("Connection lost. Try again when online.");
+  }
+  if (response.status === 204) return undefined as T;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const first = Object.values(data)[0];
+    throw new Error(
+      typeof first === "string"
+        ? first
+        : Array.isArray(first)
+          ? String(first[0])
+          : data.error || "Request failed.",
+    );
+  }
+  return data as T;
+}
+export const auth = {
+  me: () => api<User>("/users/me/"),
+  login: async (email: string, password: string) => {
+    const user = await api<User>("/auth/login/", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    await initCsrf();
+    return user;
+  },
+  register: async (
+    email: string,
+    password: string,
+    display_name: string,
+    timezone: string,
+  ) => {
+    const user = await api<User>("/auth/register/", {
+      method: "POST",
+      body: JSON.stringify({ email, password, display_name, timezone }),
+    });
+    await initCsrf();
+    return user;
+  },
+  logout: () => api<void>("/auth/logout/", { method: "POST" }),
+  update: (data: Partial<User>) =>
+    api<User>("/users/me/", { method: "PATCH", body: JSON.stringify(data) }),
+  remove: (password: string) =>
+    api<void>("/users/me/", {
+      method: "DELETE",
+      body: JSON.stringify({ password }),
+    }),
+};
+export const mealsApi = {
+  list: () => api<Meal[]>("/meals/"),
+  create: (data: MealInput) =>
+    api<Meal>("/meals/", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: MealInput) =>
+    api<Meal>(`/meals/${id}/`, { method: "PATCH", body: JSON.stringify(data) }),
+  remove: (id: string) => api<void>(`/meals/${id}/`, { method: "DELETE" }),
+  daily: (date: string) => api<Daily>(`/nutrition/daily/?date=${date}`),
+  weekly: () => api<Daily[]>("/nutrition/weekly/"),
+};
+export const foodsApi = {
+  list: (q = "") => api<Food[]>(`/foods/?q=${encodeURIComponent(q)}`),
+  create: (data: Omit<Food, "id" | "source" | "is_sample">) =>
+    api<Food>("/foods/", { method: "POST", body: JSON.stringify(data) }),
+};
+export async function uploadMealImage(image: File) {
+  const body = new FormData();
+  body.append("image", image);
+  return api<{ image_id: string; status: string; message: string }>(
+    "/recognitions/",
+    { method: "POST", body },
+  );
+}
