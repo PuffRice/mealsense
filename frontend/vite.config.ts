@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icon.svg"],
+      includeAssets: ["icon.svg", "MealSense_Logo.svg"],
       manifest: {
         name: "MealSense — mindful food logging",
         short_name: "MealSense",
@@ -39,7 +39,7 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,svg,png}"],
         runtimeCaching: [],
       },
-    }),
+    } as any),
   ],
   server: {
     proxy: { "/api": { target: "http://127.0.0.1:8000", changeOrigin: true } },

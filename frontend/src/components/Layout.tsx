@@ -48,7 +48,11 @@ export function Layout({
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand__mark">✳</span>
+          <img
+            src="/MealSense_Logo.svg"
+            alt="MealSense"
+            className="brand__mark"
+          />
           <span>
             Meal<span className="brand__light">Sense</span>
           </span>
@@ -99,7 +103,11 @@ export function Layout({
       <div className="main-shell">
         <header className="topbar">
           <div className="topbar__mobile-brand">
-            <span className="brand__mark">✳</span>
+            <img
+              src="/MealSense_Logo.svg"
+              alt="MealSense"
+              className="brand__mark"
+            />
             <strong>MealSense</strong>
           </div>
           <span className="topbar__crumb">

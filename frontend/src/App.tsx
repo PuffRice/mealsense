@@ -174,7 +174,11 @@ export default function App() {
     return (
       <div className="boot-screen">
         <div className="brand">
-          <span className="brand__mark">✳</span>
+          <img
+            src="/MealSense_Logo.svg"
+            alt="MealSense"
+            className="brand__mark"
+          />
           <span>MealSense</span>
         </div>
         <p>Preparing your space...</p>

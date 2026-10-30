@@ -57,7 +57,11 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
     <div className="auth-layout">
       <div className="auth-panel">
         <div className="brand brand--auth">
-          <span className="brand__mark">✳</span>
+          <img
+            src="/MealSense_Logo.svg"
+            alt="MealSense"
+            className="brand__mark"
+          />
           <span>
             Meal<span className="brand__light">Sense</span>
           </span>
