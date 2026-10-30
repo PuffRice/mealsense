@@ -104,3 +104,47 @@ class MealApiTests(TestCase):
         self.assertContains(res, 'MealSense')
         self.assertContains(res, 'Foods')
         self.assertContains(res, 'Meals')
+
+    def test_register_and_profile_update_with_gender_dob_bmi_fields(self):
+        self.client.logout()
+        self.client.get('/api/v1/auth/csrf/')
+        self.csrf = self.client.cookies['csrftoken'].value
+        reg_res = self.post('/api/v1/auth/register/', {
+            'email': 'newuser@example.com',
+            'password': 'secure-pass-123',
+            'display_name': 'New User',
+            'timezone': 'Asia/Dhaka',
+            'gender': 'male',
+            'date_of_birth': '2001-05-15',
+        })
+        self.assertEqual(reg_res.status_code, 201, reg_res.content)
+        reg_data = reg_res.json()
+        self.assertEqual(reg_data['profile']['gender'], 'male')
+        self.assertEqual(reg_data['profile']['date_of_birth'], '2001-05-15')
+
+        self.client.get('/api/v1/auth/csrf/')
+        self.csrf = self.client.cookies['csrftoken'].value
+        patch_res = self.client.patch(
+            '/api/v1/users/me/',
+            data=json.dumps({
+                'display_name': 'Updated User',
+                'profile': {
+                    'gender': 'female',
+                    'date_of_birth': '1999-11-20',
+                    'height_cm': 168.5,
+                    'weight_kg': 62.0,
+                    'daily_kcal_goal': 2050,
+                    'protein_goal_g': 100,
+                    'carbs_goal_g': 240,
+                    'fat_goal_g': 65,
+                },
+            }),
+            content_type='application/json',
+            HTTP_X_CSRFTOKEN=self.csrf,
+        )
+        self.assertEqual(patch_res.status_code, 200, patch_res.content)
+        updated = patch_res.json()['profile']
+        self.assertEqual(updated['gender'], 'female')
+        self.assertEqual(updated['date_of_birth'], '1999-11-20')
+        self.assertEqual(Decimal(updated['height_cm']), Decimal('168.5'))
+        self.assertEqual(Decimal(updated['weight_kg']), Decimal('62.0'))

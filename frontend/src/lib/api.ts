@@ -54,10 +54,19 @@ export const auth = {
     password: string,
     display_name: string,
     timezone: string,
+    gender = "",
+    date_of_birth: string | null = null,
   ) => {
     const user = await api<User>("/auth/register/", {
       method: "POST",
-      body: JSON.stringify({ email, password, display_name, timezone }),
+      body: JSON.stringify({
+        email,
+        password,
+        display_name,
+        timezone,
+        gender,
+        date_of_birth,
+      }),
     });
     await initCsrf();
     return user;

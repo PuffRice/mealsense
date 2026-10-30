@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  ChevronRight,
   CircleHelp,
   ClipboardList,
   Home,
@@ -8,11 +9,12 @@ import {
   Plus,
   Settings,
   Sun,
+  UserRound,
 } from "lucide-react";
 import { Button } from "../design/ui";
 import type { User } from "../lib/types";
 
-export type Page = "overview" | "meals" | "insights" | "settings";
+export type Page = "overview" | "meals" | "insights" | "settings" | "profile";
 const nav = [
   { id: "overview" as Page, label: "Overview", icon: Home },
   { id: "meals" as Page, label: "My meals", icon: ClipboardList },
@@ -38,6 +40,10 @@ export function Layout({
   onToggleTheme: () => void;
   children: React.ReactNode;
 }) {
+  const currentLabel =
+    page === "profile"
+      ? "Profile & goals"
+      : nav.find((n) => n.id === page)?.label;
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -74,15 +80,21 @@ export function Layout({
           <LogOut size={19} />
           <span>Log out</span>
         </button>
-        <div className="sidebar__user">
+        <button
+          type="button"
+          className={`sidebar__user ${page === "profile" ? "sidebar__user--active" : ""}`}
+          onClick={() => onPage("profile")}
+          title="Open Profile & goals"
+        >
           <div className="avatar">
             {(user.display_name || user.email)[0].toUpperCase()}
           </div>
-          <div>
+          <div className="sidebar__user-info">
             <strong>{user.display_name || "Your account"}</strong>
             <small>{user.email}</small>
           </div>
-        </div>
+          <ChevronRight size={16} className="sidebar__user-chevron" />
+        </button>
       </aside>
       <div className="main-shell">
         <header className="topbar">
@@ -91,8 +103,7 @@ export function Layout({
             <strong>MealSense</strong>
           </div>
           <span className="topbar__crumb">
-            Your wellness space <span>/</span>{" "}
-            <strong>{nav.find((n) => n.id === page)?.label}</strong>
+            Your wellness space <span>/</span> <strong>{currentLabel}</strong>
           </span>
           <div className="topbar__actions">
             <button
@@ -124,6 +135,13 @@ export function Layout({
             <span>{label}</span>
           </button>
         ))}
+        <button
+          className={page === "profile" ? "mobile-nav__active" : ""}
+          onClick={() => onPage("profile")}
+        >
+          <UserRound size={21} />
+          <span>Profile</span>
+        </button>
       </nav>
     </div>
   );

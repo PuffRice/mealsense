@@ -1,175 +1,137 @@
-import { useState } from "react";
-import { Check, Moon, ShieldCheck, Sun, Trash2, UserRound } from "lucide-react";
-import { Button, Card, Field } from "../../design/ui";
-import { auth } from "../../lib/api";
+import {
+  Check,
+  Moon,
+  Palette,
+  ShieldAlert,
+  ShieldCheck,
+  Sun,
+  Trash2,
+} from "lucide-react";
+import { Badge, Button, Card } from "../../design/ui";
 import type { User } from "../../lib/types";
 
 export function Settings({
   user,
-  onUpdate,
   onDelete,
   dark,
   onToggleTheme,
 }: {
   user: User;
-  onUpdate: (user: User) => void;
   onDelete: () => void;
   dark: boolean;
   onToggleTheme: () => void;
 }) {
-  const [name, setName] = useState(user.display_name);
-  const [goal, setGoal] = useState(user.profile.daily_kcal_goal);
-  const [protein, setProtein] = useState(user.profile.protein_goal_g);
-  const [carbs, setCarbs] = useState(user.profile.carbs_goal_g);
-  const [fat, setFat] = useState(user.profile.fat_goal_g);
-  const [timezone, setTimezone] = useState(user.profile.timezone);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage("");
-    try {
-      onUpdate(
-        await auth.update({
-          display_name: name,
-          profile: {
-            ...user.profile,
-            timezone,
-            daily_kcal_goal: goal,
-            protein_goal_g: protein,
-            carbs_goal_g: carbs,
-            fat_goal_g: fat,
-          },
-        }),
-      );
-      setMessage("Settings saved.");
-    } catch (cause) {
-      setMessage(
-        cause instanceof Error ? cause.message : "Could not save settings.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">MAKE IT YOURS</span>
+          <span className="eyebrow">PREFERENCES & PRIVACY</span>
           <h1>Settings</h1>
-          <p>Set the goals that feel right for you.</p>
+          <p>Customize your visual theme and manage your account privacy.</p>
         </div>
       </div>
-      <div className="settings-grid">
+
+      <div className="settings-clean-grid">
         <Card className="settings-card">
           <div className="settings-card__head">
             <span>
-              <UserRound size={20} />
+              <Palette size={20} />
             </span>
             <div>
-              <h2>Profile & goals</h2>
-              <p>Your preferences, your pace.</p>
+              <h2>Appearance</h2>
+              <p>Choose the visual theme that feels most comfortable.</p>
             </div>
           </div>
-          <form onSubmit={save}>
-            <Field
-              label="Display name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <Field label="Email address" value={user.email} disabled />
-            <Field
-              label="Timezone"
-              value={timezone}
-              onChange={(event) => setTimezone(event.target.value)}
-              hint="Use an IANA timezone, such as Asia/Dhaka."
-            />
-            <div className="settings-card__divider" />
-            <h3>Daily targets</h3>
-            <div className="settings-card__fields">
-              <Field
-                label="Calories (kcal)"
-                type="number"
-                min="1"
-                value={goal}
-                onChange={(event) => setGoal(Number(event.target.value))}
-              />
-              <Field
-                label="Protein (g)"
-                type="number"
-                min="0"
-                value={protein}
-                onChange={(event) => setProtein(Number(event.target.value))}
-              />
-              <Field
-                label="Carbs (g)"
-                type="number"
-                min="0"
-                value={carbs}
-                onChange={(event) => setCarbs(Number(event.target.value))}
-              />
-              <Field
-                label="Fats (g)"
-                type="number"
-                min="0"
-                value={fat}
-                onChange={(event) => setFat(Number(event.target.value))}
-              />
-            </div>
-            <p className="settings-card__disclaimer">
-              Goals are personal tracking targets, not dietary prescriptions.
-            </p>
-            {message && (
-              <p className="settings-message" role="status">
-                {message}
-              </p>
-            )}
-            <Button type="submit" disabled={saving} icon={<Check size={17} />}>
-              {saving ? "Saving..." : "Save settings"}
-            </Button>
-          </form>
-        </Card>
-        <div className="settings-side">
-          <Card className="settings-card">
-            <div className="settings-card__head">
-              <span>{dark ? <Moon size={20} /> : <Sun size={20} />}</span>
-              <div>
-                <h2>Appearance</h2>
-                <p>Choose your viewing comfort.</p>
-              </div>
-            </div>
-            <button className="setting-row" onClick={onToggleTheme}>
-              <span>{dark ? "Dark theme" : "Light theme"}</span>
-              <strong>Change</strong>
-            </button>
-          </Card>
-          <Card className="settings-card">
-            <div className="settings-card__head">
-              <span>
-                <ShieldCheck size={20} />
-              </span>
-              <div>
-                <h2>Privacy & data</h2>
-                <p>Your diary belongs to you.</p>
-              </div>
-            </div>
-            <p>
-              Meal photos and records stay private to your account. Sample food
-              values are illustrative and should be checked against reliable
-              sources.
-            </p>
+
+          <div className="theme-selector" role="radiogroup" aria-label="Theme">
             <button
-              className="setting-row setting-row--danger"
+              type="button"
+              role="radio"
+              aria-checked={!dark}
+              className={`theme-option ${!dark ? "theme-option--active" : ""}`}
+              onClick={() => {
+                if (dark) onToggleTheme();
+              }}
+            >
+              <div className="theme-option__icon">
+                <Sun size={20} />
+              </div>
+              <div className="theme-option__body">
+                <strong>Light theme</strong>
+                <small>Warm natural canvas with crisp sage accents</small>
+              </div>
+              {!dark && (
+                <Badge tone="green">
+                  <Check size={12} /> Active
+                </Badge>
+              )}
+            </button>
+
+            <button
+              type="button"
+              role="radio"
+              aria-checked={dark}
+              className={`theme-option ${dark ? "theme-option--active" : ""}`}
+              onClick={() => {
+                if (!dark) onToggleTheme();
+              }}
+            >
+              <div className="theme-option__icon">
+                <Moon size={20} />
+              </div>
+              <div className="theme-option__body">
+                <strong>Dark theme</strong>
+                <small>Deep forest tones for low-light comfort</small>
+              </div>
+              {dark && (
+                <Badge tone="green">
+                  <Check size={12} /> Active
+                </Badge>
+              )}
+            </button>
+          </div>
+        </Card>
+
+        <Card className="settings-card">
+          <div className="settings-card__head">
+            <span>
+              <ShieldCheck size={20} />
+            </span>
+            <div>
+              <h2>Delete account & privacy</h2>
+              <p>Your food diary and photos belong strictly to you.</p>
+            </div>
+          </div>
+
+          <div className="privacy-summary">
+            <p>
+              Signed in as <strong>{user.email}</strong>. Meal photos and
+              nutrition records are stored privately and never shared publicly.
+            </p>
+          </div>
+
+          <div className="danger-zone">
+            <div className="danger-zone__head">
+              <ShieldAlert size={18} />
+              <div>
+                <strong>Permanent account deletion</strong>
+                <p>
+                  Deleting your account permanently removes your profile, logged
+                  meals, and uploaded meal photos. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              icon={<Trash2 size={16} />}
               onClick={onDelete}
             >
-              <span>
-                <Trash2 size={17} /> Delete my account
-              </span>
-              <strong>Delete</strong>
-            </button>
-          </Card>
-        </div>
+              Delete my account
+            </Button>
+          </div>
+        </Card>
       </div>
     </>
   );

@@ -1,6 +1,11 @@
+export type Gender = "" | "male" | "female" | "other";
 export type Profile = {
   timezone: string;
   units: string;
+  gender?: Gender;
+  date_of_birth?: string | null;
+  height_cm?: string | number | null;
+  weight_kg?: string | number | null;
   daily_kcal_goal: number;
   protein_goal_g: number;
   carbs_goal_g: number;

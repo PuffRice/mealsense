@@ -6,6 +6,7 @@ import { Overview } from "./features/overview/Overview";
 import { MealsPage } from "./features/meals/MealsPage";
 import { MealEditor } from "./features/meals/MealEditor";
 import { Insights } from "./features/insights/Insights";
+import { ProfilePage } from "./features/profile/ProfilePage";
 import { Settings } from "./features/settings/Settings";
 import { auth, foodsApi, mealsApi } from "./lib/api";
 import { clearLocalData, loadSnapshot, saveSnapshot } from "./lib/offline";
@@ -233,13 +234,18 @@ export default function App() {
           />
         )}
         {page === "insights" && <Insights user={user} weekly={weekly} />}
-        {page === "settings" && (
-          <Settings
+        {page === "profile" && (
+          <ProfilePage
             user={user}
             onUpdate={(active) => {
               setUser(active);
               void refresh(active);
             }}
+          />
+        )}
+        {page === "settings" && (
+          <Settings
+            user={user}
             onDelete={() => void deleteAccount()}
             dark={dark}
             onToggleTheme={() => setDark(!dark)}

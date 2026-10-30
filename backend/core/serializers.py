@@ -1,13 +1,38 @@
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 from rest_framework import serializers
 from .models import Food, Meal, MealItem, Profile
 
+VALID_GENDERS = ('', 'male', 'female', 'other')
+
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = Profile
-        fields = ['timezone', 'units', 'daily_kcal_goal', 'protein_goal_g', 'carbs_goal_g', 'fat_goal_g']
+        fields = [
+            'timezone',
+            'units',
+            'gender',
+            'date_of_birth',
+            'height_cm',
+            'weight_kg',
+            'daily_kcal_goal',
+            'protein_goal_g',
+            'carbs_goal_g',
+            'fat_goal_g',
+        ]
+
+    def validate_gender(self, value):
+        normalized = str(value or '').strip().lower()
+        if normalized not in VALID_GENDERS:
+            raise serializers.ValidationError('Select a valid gender.')
+        return normalized
+
+    def validate_date_of_birth(self, value):
+        if value and value > date.today():
+            raise serializers.ValidationError('Date of birth cannot be in the future.')
+        return value
 
 
 class FoodSerializer(serializers.ModelSerializer):

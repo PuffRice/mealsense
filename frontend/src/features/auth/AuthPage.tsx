@@ -1,25 +1,33 @@
 import { useState } from "react";
 import {
   ArrowRight,
+  Calendar,
   Check,
   Eye,
   EyeOff,
   Leaf,
   ShieldCheck,
 } from "lucide-react";
-import { Button, Field } from "../../design/ui";
+import { Button, Field, SelectField } from "../../design/ui";
 import { FoodArt } from "../../components/FoodArt";
 import { auth } from "../../lib/api";
-import type { User } from "../../lib/types";
+import type { Gender, User } from "../../lib/types";
+import { calculateExactAge, getTodayIso } from "../profile/bmi";
 
 export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
   const [register, setRegister] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [gender, setGender] = useState<Gender>("");
+  const [dob, setDob] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [todayIso] = useState(getTodayIso);
+
+  const exactAge = register ? calculateExactAge(dob) : null;
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
@@ -32,6 +40,8 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
               password,
               name,
               Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+              gender,
+              dob || null,
             )
           : await auth.login(email, password),
       );
@@ -67,13 +77,45 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
           </p>
           <form onSubmit={submit} className="auth-form">
             {register && (
-              <Field
-                label="Your name"
-                placeholder="e.g. Alex"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-              />
+              <>
+                <Field
+                  label="Your name"
+                  placeholder="e.g. Alex"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  required
+                />
+                <div className="auth-form__row">
+                  <SelectField
+                    label="Gender"
+                    value={gender}
+                    onChange={(value) => setGender(value as Gender)}
+                  >
+                    <option value="">Select gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </SelectField>
+                  <Field
+                    label="Date of birth"
+                    type="date"
+                    max={todayIso}
+                    value={dob}
+                    onChange={(event) => setDob(event.target.value)}
+                    required
+                  />
+                </div>
+                {exactAge && (
+                  <div className="auth-age-preview" aria-live="polite">
+                    <Calendar size={14} />
+                    <span>
+                      Age: <strong>{exactAge.years}y</strong>{" "}
+                      <strong>{exactAge.months}m</strong>{" "}
+                      <strong>{exactAge.days}d</strong>
+                    </span>
+                  </div>
+                )}
+              </>
             )}
             <Field
               label="Email address"

@@ -32,9 +32,9 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'timezone', 'units', 'daily_kcal_goal')
+    list_display = ('user', 'gender', 'date_of_birth', 'height_cm', 'weight_kg', 'timezone', 'units', 'daily_kcal_goal')
     search_fields = ('user__email',)
-    list_filter = ('units',)
+    list_filter = ('units', 'gender')
 
 
 @admin.register(Food)

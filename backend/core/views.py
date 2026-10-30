@@ -37,6 +37,10 @@ class RegisterView(APIView):
         password = str(request.data.get('password', ''))
         name = str(request.data.get('display_name', '')).strip()[:80]
         timezone_name = str(request.data.get('timezone', 'Asia/Dhaka'))
+        gender = str(request.data.get('gender', '')).strip().lower()
+        dob_raw = request.data.get('date_of_birth') or None
+        if dob_raw == '':
+            dob_raw = None
         if not email or '@' not in email:
             raise ValidationError({'email': 'Enter a valid email.'})
         try:
@@ -47,10 +51,20 @@ class RegisterView(APIView):
             ZoneInfo(timezone_name)
         except Exception:
             raise ValidationError({'timezone': 'Unknown timezone.'}) from None
+        profile_serializer = ProfileSerializer(
+            data={'timezone': timezone_name, 'gender': gender, 'date_of_birth': dob_raw},
+            partial=True,
+        )
+        profile_serializer.is_valid(raise_exception=True)
         try:
             with transaction.atomic():
                 user = User.objects.create_user(email=email, password=password, display_name=name)
-                Profile.objects.create(user=user, timezone=timezone_name)
+                Profile.objects.create(
+                    user=user,
+                    timezone=timezone_name,
+                    gender=profile_serializer.validated_data.get('gender', ''),
+                    date_of_birth=profile_serializer.validated_data.get('date_of_birth'),
+                )
         except IntegrityError:
             raise ValidationError({'email': 'Account already exists.'}) from None
         login(request, user)
@@ -89,7 +103,11 @@ class MeView(APIView):
 
     def patch(self, request):
         profile, _ = Profile.objects.get_or_create(user=request.user)
-        serializer = ProfileSerializer(profile, data=request.data.get('profile', {}), partial=True)
+        raw_profile = dict(request.data.get('profile', {}) or {})
+        for nullable_key in ('date_of_birth', 'height_cm', 'weight_kg'):
+            if raw_profile.get(nullable_key) == '':
+                raw_profile[nullable_key] = None
+        serializer = ProfileSerializer(profile, data=raw_profile, partial=True)
         serializer.is_valid(raise_exception=True)
         try:
             ZoneInfo(serializer.validated_data.get('timezone', profile.timezone))
