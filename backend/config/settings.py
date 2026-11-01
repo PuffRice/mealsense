@@ -67,6 +67,15 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
+# Temporary cloud vision adapters used until an in-house model is trained.
+# Switch via env: AI_PROVIDER='' (off) | 'openai' | 'gemini'; keys stay in env.
+AI_PROVIDER = os.environ.get('AI_PROVIDER', '').strip().lower()
+AI_VISION_MODEL = os.environ.get('AI_VISION_MODEL', '').strip()
+AI_API_KEYS = {
+    'openai': os.environ.get('OPENAI_API_KEY', ''),
+    'gemini': os.environ.get('GEMINI_API_KEY', ''),
+}
+AI_TIMEOUT_SECONDS = float(os.environ.get('AI_TIMEOUT_SECONDS', '30'))
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],

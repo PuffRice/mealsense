@@ -2,12 +2,14 @@ import json
 import tempfile
 from decimal import Decimal
 from io import BytesIO
+from unittest.mock import patch
 from uuid import uuid4
 from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
-from .models import Food, FoodImage, Meal, Profile, User
+from .models import Food, FoodImage, FoodPrediction, Meal, Profile, User
+from .services import ProviderError, normalize_candidates
 
 
 class MealApiTests(TestCase):
@@ -148,3 +150,136 @@ class MealApiTests(TestCase):
         self.assertEqual(updated['date_of_birth'], '1999-11-20')
         self.assertEqual(Decimal(updated['height_cm']), Decimal('168.5'))
         self.assertEqual(Decimal(updated['weight_kg']), Decimal('62.0'))
+
+
+def png_upload():
+    image = Image.new('RGB', (320, 240), 'purple')
+    buffer = BytesIO()
+    image.save(buffer, format='PNG')
+    return SimpleUploadedFile('meal.png', buffer.getvalue(), content_type='image/png')
+
+
+class NormalizeCandidatesTests(TestCase):
+    def test_clamps_sorts_and_drops_invalid(self):
+        result = normalize_candidates([
+            {'name': 'Low', 'category': 'Dish', 'confidence': -1},
+            {'name': 'Valid', 'category': 'Dish', 'confidence': 0.7},
+            {'name': 'High', 'confidence': 9},
+            'not-a-dict',
+            {'confidence': 0.5},
+        ])
+        self.assertEqual(result[0]['name'], 'High')
+        self.assertEqual(result[0]['confidence'], 1.0)
+        self.assertEqual(result[1]['name'], 'Valid')
+        self.assertEqual(result[2]['name'], 'Low')
+        self.assertEqual(result[2]['confidence'], 0.0)
+        self.assertTrue(all('name' in item for item in result))
+
+
+@override_settings(AI_TIMEOUT_SECONDS=5)
+class RecognitionTests(TestCase):
+    def setUp(self):
+        self.client = Client(enforce_csrf_checks=True)
+        self.user = User.objects.create_user(email='a@example.com', password='secure-pass-123')
+        Profile.objects.create(user=self.user)
+        self.food = Food.objects.create(name='Grilled chicken salad', category='Dish', kcal_100g=150,
+            protein_100g=20, carbs_100g=6, fat_100g=5, source='Test fixture')
+        self.client.get('/api/v1/auth/csrf/')
+        self.csrf = self.client.cookies['csrftoken'].value
+        login = self.client.post('/api/v1/auth/login/',
+            data=json.dumps({'email': self.user.email, 'password': 'secure-pass-123'}),
+            content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(login.status_code, 200, login.content)
+        self.client.get('/api/v1/auth/csrf/')
+        self.csrf = self.client.cookies['csrftoken'].value
+
+    def upload(self):
+        return self.client.post('/api/v1/recognitions/', data={'image': png_upload()}, HTTP_X_CSRFTOKEN=self.csrf)
+
+    def test_recognition_off_by_default_stays_manual(self):
+        response = self.upload()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(body['status'], 'unavailable')
+        self.assertEqual(body['error_code'], 'MODEL_NOT_CONFIGURED')
+        self.assertEqual(body['candidates'], [])
+        self.assertEqual(body['message'], 'Recognition is not configured yet. Add food manually.')
+        self.assertTrue(FoodImage.objects.get(pk=body['image_id']).file.name)
+
+    @override_settings(AI_PROVIDER='openai', AI_VISION_MODEL='test-model',
+                       AI_API_KEYS={'openai': 'test-key', 'gemini': ''})
+    def test_openai_provider_returns_candidates_and_matches_food(self):
+        content = json.dumps({'candidates': [
+            {'name': self.food.name, 'category': 'Dish', 'confidence': 0.92},
+            {'name': 'Other dish', 'category': 'Dish', 'confidence': 0.5},
+        ]})
+        canned = {'choices': [{'message': {'content': content}}]}
+        with patch('core.services._provider_request', return_value=canned) as request_mock:
+            response = self.upload()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(body['status'], 'completed')
+        self.assertEqual(body['model_version'], 'openai:test-model')
+        self.assertEqual(body['error_code'], '')
+        self.assertEqual(body['candidates'][0]['name'], self.food.name)
+        self.assertEqual(body['candidates'][0]['food_id'], str(self.food.id))
+        self.assertEqual(body['candidates'][1]['confidence'], 0.5)
+        self.assertIsNone(body['candidates'][1]['food_id'])
+        self.assertEqual(len(response.json()['candidates']), 2)
+        request_mock.assert_called_once()
+        request_body = request_mock.call_args.args[2].decode('utf-8', 'ignore')
+        self.assertNotIn('test-key', request_body)
+        self.assertIn('data:image/jpeg;base64,', request_body)
+        prediction = FoodPrediction.objects.get(pk=body['id'])
+        self.assertEqual(prediction.status, 'completed')
+
+    @override_settings(AI_PROVIDER='gemini', AI_VISION_MODEL='test-model',
+                       AI_API_KEYS={'openai': '', 'gemini': 'test-key'})
+    def test_gemini_provider_returns_candidates(self):
+        content = json.dumps({'candidates': [{'name': self.food.name, 'category': 'Dish', 'confidence': 0.8}]})
+        canned = {'candidates': [{'content': {'parts': [{'text': content}]}}]}
+        with patch('core.services._provider_request', return_value=canned):
+            response = self.upload()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(body['status'], 'completed')
+        self.assertEqual(body['model_version'], 'gemini:test-model')
+        self.assertEqual(body['candidates'][0]['food_id'], str(self.food.id))
+        self.assertIsNone(body['candidates'][0].get('grams'))
+
+    @override_settings(AI_PROVIDER='openai', AI_VISION_MODEL='test-model',
+                       AI_API_KEYS={'openai': 'test-key', 'gemini': ''})
+    def test_provider_failure_keeps_prediction_and_manual_logging(self):
+        with patch('core.services._provider_request', side_effect=ProviderError('PROVIDER_ERROR')):
+            response = self.upload()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(body['status'], 'failed')
+        self.assertEqual(body['error_code'], 'PROVIDER_ERROR')
+        self.assertEqual(body['candidates'], [])
+        detail = self.client.get(f"/api/v1/recognitions/{body['id']}/")
+        self.assertEqual(detail.json()['error_code'], 'PROVIDER_ERROR')
+        # Manual path still works: meal saved with this image computes totals on server.
+        meal_response = self.client.post('/api/v1/meals/',
+            data=json.dumps({'eaten_at': timezone.now().isoformat(), 'meal_type': 'lunch',
+                             'image_id': body['image_id'],
+                             'items': [{'food_id': str(self.food.id), 'grams': 200}]}),
+            content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(meal_response.status_code, 201, meal_response.content)
+        self.assertEqual(Decimal(meal_response.json()['totals']['kcal']), Decimal('300.00'))
+
+    @override_settings(AI_PROVIDER='openai', AI_API_KEYS={'openai': '', 'gemini': ''})
+    def test_provider_selected_without_key_stays_unavailable(self):
+        response = self.upload()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(body['status'], 'unavailable')
+        self.assertEqual(body['error_code'], 'MODEL_NOT_CONFIGURED')
+
+    @override_settings(AI_PROVIDER='nonsense', AI_VISION_MODEL='bogus-model',
+                       AI_API_KEYS={'openai': 'test-key', 'gemini': 'test-key'})
+    def test_unknown_provider_value_is_off(self):
+        response = self.upload()
+        body = response.json()
+        self.assertEqual(body['status'], 'unavailable')
+        self.assertEqual(body['error_code'], 'MODEL_NOT_CONFIGURED')

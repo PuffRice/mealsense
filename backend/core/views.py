@@ -20,7 +20,8 @@ from rest_framework.views import APIView
 
 from .models import Food, FoodImage, FoodPrediction, IdempotencyRecord, Meal, Profile, User
 from .serializers import FoodSerializer, MealInputSerializer, MealSerializer, ProfileSerializer
-from .services import date_window, replace_meal_items
+from .services import (date_window, matched_catalog_foods, provider_image_bytes,
+                       recognize_with_provider, replace_meal_items)
 
 
 @ensure_csrf_cookie
@@ -278,11 +279,24 @@ class RecognitionView(APIView):
         except (UnidentifiedImageError, ValueError, OSError, Image.DecompressionBombError):
             raise ValidationError({'image': 'Use a valid JPEG, PNG, or WebP under 20 megapixels.'}) from None
         upload.name = f'{uuid4().hex}.{extension}'
+        provider_bytes, provider_mime = provider_image_bytes(image)
+        upload.seek(0)
         stored = FoodImage.objects.create(user=request.user, file=upload, mime_type=mime, size_bytes=upload.size)
-        prediction = FoodPrediction.objects.create(user=request.user, image=stored, status='unavailable',
-                                                    error_code='MODEL_NOT_CONFIGURED')
+        result = recognize_with_provider(provider_bytes, provider_mime)
+        food_ids = matched_catalog_foods(result['candidates'], request.user)
+        candidates = [dict(item, food_id=food_ids.get(item['name'])) for item in result['candidates']]
+        prediction = FoodPrediction.objects.create(user=request.user, image=stored, status=result['status'],
+                                                   model_version=result['model_version'],
+                                                   candidates=candidates, error_code=result['error_code'])
+        messages = {
+            'completed': 'These are suggestions only. Confirm the food and serving size before saving.',
+            'failed': 'Recognition failed. Add food manually.',
+        }
         return Response({'id': str(prediction.id), 'image_id': str(stored.id), 'status': prediction.status,
-                         'candidates': [], 'message': 'Recognition is not configured yet. Add food manually.'}, status=201)
+                         'candidates': prediction.candidates, 'model_version': prediction.model_version,
+                         'error_code': prediction.error_code,
+                         'message': messages.get(prediction.status, 'Recognition is not configured yet. Add food manually.')},
+                        status=201)
 
 
 class RecognitionDetailView(APIView):

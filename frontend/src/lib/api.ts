@@ -1,4 +1,4 @@
-import type { Daily, Food, Meal, MealInput, User } from "./types";
+import type { Candidate, Daily, Food, Meal, MealInput, User } from "./types";
 
 let csrf = "";
 export async function initCsrf() {
@@ -98,8 +98,13 @@ export const foodsApi = {
 export async function uploadMealImage(image: File) {
   const body = new FormData();
   body.append("image", image);
-  return api<{ image_id: string; status: string; message: string }>(
-    "/recognitions/",
-    { method: "POST", body },
-  );
+  return api<{
+    id: string;
+    image_id: string;
+    status: "completed" | "failed" | "unavailable";
+    candidates: Candidate[];
+    model_version?: string;
+    error_code?: string;
+    message: string;
+  }>("/recognitions/", { method: "POST", body });
 }

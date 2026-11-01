@@ -44,6 +44,12 @@ export type MealItem = {
   carbs_g: string;
   fat_g: string;
 };
+export type Candidate = {
+  name: string;
+  category: string;
+  confidence: number;
+  food_id: string | null;
+};
 export type Meal = {
   id: string;
   eaten_at: string;

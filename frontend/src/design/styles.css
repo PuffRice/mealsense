@@ -1639,6 +1639,35 @@ button:focus-visible {
   color: var(--text-soft);
   margin: 0;
 }
+.suggestion-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.suggestion-row__label {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+.suggestion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--accent-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.suggestion-chip small {
+  color: var(--text-soft);
+}
+.suggestion-chip:hover {
+  background: var(--surface-soft);
+}
 .custom-food .button {
   justify-self: start;
 }

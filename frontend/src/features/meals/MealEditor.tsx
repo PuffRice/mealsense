@@ -3,7 +3,7 @@ import { Camera, Check, Plus, Search, Trash2, X } from "lucide-react";
 import { Badge, Button, Field, SelectField } from "../../design/ui";
 import { foodsApi, mealsApi, uploadMealImage } from "../../lib/api";
 import { loadDraft, removeDraft, saveDraft } from "../../lib/offline";
-import type { Food, Meal, MealInput } from "../../lib/types";
+import type { Candidate, Food, Meal, MealInput } from "../../lib/types";
 
 function localDateTime(date?: string) {
   const value = date ? new Date(date) : new Date();
@@ -51,6 +51,7 @@ export function MealEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [photoNotice, setPhotoNotice] = useState("");
+  const [suggestions, setSuggestions] = useState<Candidate[]>([]);
   const [operationId] = useState(crypto.randomUUID());
   const [draftReady, setDraftReady] = useState(false);
   useEffect(() => {
@@ -126,6 +127,39 @@ export function MealEditor({
       setBusy(false);
     }
   }
+  async function pickPhoto(file: File | null) {
+    setSuggestions([]);
+    setPhotoNotice("");
+    setPhoto(file);
+    if (!file) return;
+    if (!navigator.onLine) {
+      setError(
+        "You are offline. Photos upload when online; add food manually now.",
+      );
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const result = await uploadMealImage(file);
+      setImageId(result.image_id);
+      setPhotoNotice(result.message);
+      setSuggestions(result.status === "completed" ? result.candidates : []);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not upload photo.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  function applySuggestion(candidate: Candidate) {
+    const food = candidate.food_id
+      ? foods.find((item) => item.id === candidate.food_id)
+      : undefined;
+    if (food) addFood(food);
+    else setQuery(candidate.name);
+  }
   async function save(event: React.FormEvent) {
     event.preventDefault();
     setError("");
@@ -141,19 +175,11 @@ export function MealEditor({
     }
     setBusy(true);
     try {
-      let savedImage = imageId;
-      if (photo) {
-        const result = await uploadMealImage(photo);
-        savedImage = result.image_id;
-        setImageId(savedImage);
-        setPhoto(null);
-        setPhotoNotice(result.message);
-      }
       const data: MealInput = {
         eaten_at: new Date(when).toISOString(),
         meal_type: kind,
         notes,
-        image_id: savedImage,
+        image_id: imageId,
         items: entries.map(({ food_id, grams }) => ({ food_id, grams })),
         operation_id: operationId,
       };
@@ -371,14 +397,37 @@ export function MealEditor({
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
-                onChange={(event) => setPhoto(event.target.files?.[0] || null)}
+                onChange={(event) =>
+                  void pickPhoto(event.target.files?.[0] ?? null)
+                }
               />
             </label>
             <p className="editor-note">
-              Food recognition is not configured yet. Your photo stays private
-              and you choose the food yourself. New meal text drafts save
-              locally; photos do not.
+              Your photo is analyzed only to suggest foods. Suggestions are
+              approximate; you pick the food and serving size yourself. Text
+              drafts save locally; photos do not.
             </p>
+            {suggestions.length > 0 && (
+              <div
+                className="suggestion-row"
+                aria-label="Food suggestions from your photo"
+              >
+                <span className="suggestion-row__label">
+                  Seen in your photo?
+                </span>
+                {suggestions.map((item) => (
+                  <button
+                    type="button"
+                    key={item.name}
+                    className="suggestion-chip"
+                    onClick={() => applySuggestion(item)}
+                  >
+                    {item.name}
+                    {item.category && <small>{item.category}</small>}
+                  </button>
+                ))}
+              </div>
+            )}
             {photoNotice && <p className="editor-note">{photoNotice}</p>}
           </div>
           <label className="field">
