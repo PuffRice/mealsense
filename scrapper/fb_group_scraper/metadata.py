@@ -131,7 +131,8 @@ class MetadataManager:
             except Exception as exc:
                 logger.warning("Skipping malformed metadata record during resume: %s", exc)
 
-        # Also inspect existing files in images_dir and food_images / non_food_images so we never overwrite an existing image
+        # Also inspect existing files in images_dir and food_images / non_food_images so we never overwrite an existing image.
+        # Ignore macOS hidden files (.DS_Store) and AppleDouble resource forks (._*).
         for candidate_dir in (
             self.images_dir,
             self.images_dir.parent / "food_images",
@@ -139,7 +140,7 @@ class MetadataManager:
         ):
             if candidate_dir.exists():
                 for existing_file in candidate_dir.iterdir():
-                    if existing_file.is_file():
+                    if existing_file.is_file() and not existing_file.name.startswith("."):
                         self._update_index_from_filename(existing_file.name)
 
     def _update_index_from_filename(self, filename: str) -> None:

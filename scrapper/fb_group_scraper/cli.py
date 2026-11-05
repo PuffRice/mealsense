@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import signal
 import sys
 from pathlib import Path
 from typing import Callable, Dict, Iterator, Optional
@@ -26,20 +27,33 @@ from .validator import ValidationError, validate_all
 logger = logging.getLogger(__name__)
 
 
+def _install_signal_handlers() -> None:
+    """Ensure SIGTERM (common on macOS/Linux) triggers graceful cleanup like SIGINT (Ctrl+C)."""
+    def _sig_handler(signum, frame):
+        raise KeyboardInterrupt(f"Received signal {signum}")
+
+    try:
+        signal.signal(signal.SIGTERM, _sig_handler)
+    except (ValueError, AttributeError):
+        pass
+
+
 def _run_food_filter_and_print_summary(config: ScraperConfig) -> Dict[str, object]:
     """Run the vision food classifier to move food images into `food_images/` and print summary."""
     print(
         f"\n[Vision Food Filter] Classifying images in '{config.output_dir}' using "
-        f"Hugging Face TinyCLIP (threshold={config.food_confidence_threshold:.2f})..."
+        f"Hugging Face TinyCLIP (threshold={config.food_confidence_threshold:.2f}, device={config.device})..."
     )
     food_report = filter_and_move_food_images(
         dataset_dir=config.output_dir,
         food_dir_name="food_images",
         non_food_dir_name="non_food_images",
         confidence_threshold=config.food_confidence_threshold,
+        device=config.device,
         show_progress=True,
     )
     print(
+        f"  -> Execution device   : {food_report.get('device', 'cpu')}\n"
         f"  -> Evaluated this run : {food_report['total_images_evaluated_this_run']}\n"
         f"  -> Food images kept   : {food_report['food_images_moved_this_run']} "
         f"(Saved in '{config.food_images_dir.resolve()}')\n"
@@ -194,6 +208,7 @@ def run_scraping_pipeline(
 
 def main(argv: Optional[list[str]] = None) -> int:
     """Main CLI entrypoint."""
+    _install_signal_handlers()
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
@@ -203,6 +218,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             output_dir=Path(args.output_dir),
             filter_food_only=True,
             food_confidence_threshold=args.food_threshold,
+            device=args.device,
         )
         _run_food_filter_and_print_summary(config)
         return 0
@@ -223,6 +239,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             resume=args.resume,
             filter_food_only=args.filter_food,
             food_confidence_threshold=args.food_threshold,
+            device=args.device,
         )
     elif args.url is not None:
         config = ScraperConfig(
@@ -238,6 +255,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             resume=args.resume,
             filter_food_only=args.filter_food,
             food_confidence_threshold=args.food_threshold,
+            device=args.device,
         )
     else:
         config = prompt_interactive_config(defaults=args)

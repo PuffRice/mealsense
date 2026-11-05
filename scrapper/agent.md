@@ -19,11 +19,14 @@ This repository contains a modular, production-ready **Facebook Group Gallery Im
 
 ```text
 scrapper/
-├── main.py                          # Top-level CLI entrypoint script
+├── main.py                          # Top-level CLI entrypoint script (executable)
+├── pyproject.toml                   # Standard packaging metadata and dependencies
 ├── requirements.txt                 # Application runtime dependencies
 ├── .gitignore                       # Git exclusion rules (caches, virtual envs, OS artifacts)
-├── README.md                        # User and developer documentation
+├── README.md                        # User and developer documentation (macOS & Windows)
 ├── AGENT.md                         # This operational specifications manual
+├── tests/                           # Unit test suite
+│   └── test_scraper.py              # Validation, device resolution, and compatibility tests
 ├── fb_group_scraper/                # Core Python package
 │   ├── __init__.py                  # Package initialization and exports
 │   ├── cli.py                       # CLI parsing, interactive wizard & pipeline orchestration
@@ -207,9 +210,12 @@ Records every classification prediction:
    - Before downloading, `MetadataManager` checks if `url` or `sha256` has already been ingested.
    - Filename indexing (`_next_index`) scans `images/`, `food_images/`, and `non_food_images/` so resumed sessions never overwrite existing files.
 
-4. **Model Caching & Windows Portability**:
+4. **Model Caching & Cross-Platform (macOS & Windows) Portability**:
    - The vision classifier uses `wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M`, an ultra-lightweight (~30MB) CLIP model that downloads automatically on first run via Hugging Face Hub.
    - `HF_HUB_DISABLE_SYMLINKS_WARNING=1` is preset to prevent Windows symlink warnings.
+   - On macOS with Apple Silicon (M1/M2/M3/M4), the classifier automatically supports Apple Metal Performance Shaders (`mps`) hardware acceleration via `--device mps` or default `--device auto`.
+   - Hidden files and AppleDouble metadata (`.DS_Store`, `._*`) are automatically ignored across dataset directory scans to prevent corruption or Pillow read errors on macOS.
+   - Handles `SIGTERM` and `SIGINT` signals gracefully to flush all metadata before process termination.
 
 ---
 
@@ -218,4 +224,4 @@ Records every classification prediction:
 When modifying this repository:
 - **Preserve Docstrings & Typing**: All functions use PEP 484 type annotations and descriptive docstrings.
 - **Maintain Clean Working Tree**: Do not commit `.pyc` files, `__pycache__` directories, or temporary scratch files.
-- **Verify Execution**: Ensure `python main.py --help` and `--filter-only` execute cleanly without syntax errors or unhandled exceptions.
+- **Verify Execution**: Ensure `python main.py --help` and unit tests (`python -m unittest discover -s tests`) execute cleanly without syntax errors or unhandled exceptions.

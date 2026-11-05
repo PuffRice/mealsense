@@ -35,6 +35,7 @@ class ScraperConfig:
     resume: bool = True
     filter_food_only: bool = True
     food_confidence_threshold: float = 0.50
+    device: str = "auto"
 
     @property
     def images_dir(self) -> Path:
@@ -249,6 +250,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Confidence threshold (0.0-1.0) for classifying an image as food (default: 0.50)",
     )
     parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=["auto", "cpu", "cuda", "mps"],
+        help=(
+            "Inference device for vision food filter ('auto', 'cpu', 'cuda', 'mps'). "
+            "On macOS with Apple Silicon (M1/M2/M3/M4), 'auto' automatically selects "
+            "Apple Metal Performance Shaders (MPS) for hardware acceleration (default: auto)."
+        ),
+    )
+    parser.add_argument(
         "--non-interactive",
         action="store_true",
         default=False,
@@ -287,6 +299,7 @@ def prompt_interactive_config(defaults: Optional[argparse.Namespace] = None) -> 
     default_output_dir = getattr(defaults, "output_dir", "facebook_group_dataset")
     default_include_albums = getattr(defaults, "include_albums", True)
     default_timeout = getattr(defaults, "timeout", 30)
+    default_device = getattr(defaults, "device", "auto")
 
     group_url = _prompt_with_default("1. Facebook Group Gallery URL", default_url)
     max_images = _prompt_int(
@@ -330,4 +343,5 @@ def prompt_interactive_config(defaults: Optional[argparse.Namespace] = None) -> 
         output_dir=Path(output_dir_str),
         include_multi_image_albums=include_albums,
         request_timeout=timeout,
+        device=default_device,
     )

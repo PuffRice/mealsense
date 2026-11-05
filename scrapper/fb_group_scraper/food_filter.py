@@ -51,29 +51,67 @@ class FoodClassificationResult:
 
 
 class FoodImageClassifier:
-    """Classifies images as Food vs. Non-Food using a downloadable Hugging Face CLIP vision model."""
+    """Classifies images as Food vs. Non-Food using a downloadable Hugging Face CLIP vision model.
+
+    Supports automatic hardware acceleration on:
+    - Apple Silicon macOS via Metal Performance Shaders (MPS)
+    - NVIDIA GPUs via CUDA
+    - CPU fallback
+    """
 
     def __init__(
         self,
         model_id: str = DEFAULT_FOOD_MODEL_ID,
         confidence_threshold: float = 0.50,
+        device: str = "auto",
     ) -> None:
         self.model_id = model_id
         self.confidence_threshold = confidence_threshold
+        self.requested_device = device
+        self.device = None
         self._model = None
         self._processor = None
 
+    def _resolve_device(self, torch_module) -> str:
+        """Resolve the target execution device ('cpu', 'cuda', 'mps')."""
+        req = (self.requested_device or "auto").strip().lower()
+        if req in ("cuda", "mps", "cpu"):
+            if req == "cuda" and not torch_module.cuda.is_available():
+                logger.warning("CUDA requested but not available; using CPU instead.")
+                return "cpu"
+            if req == "mps" and not (
+                hasattr(torch_module.backends, "mps")
+                and torch_module.backends.mps.is_available()
+            ):
+                logger.warning("MPS requested but not available on this system; using CPU instead.")
+                return "cpu"
+            return req
+
+        # Automatic detection: CUDA > Apple Silicon MPS > CPU
+        if torch_module.cuda.is_available():
+            return "cuda"
+        if hasattr(torch_module.backends, "mps") and torch_module.backends.mps.is_available():
+            return "mps"
+        return "cpu"
+
     def _ensure_loaded(self) -> None:
-        """Lazily load the Hugging Face CLIP model and processor."""
+        """Lazily load the Hugging Face CLIP model and processor on the optimal device."""
         if self._model is not None and self._processor is not None:
             return
 
         import torch
         from transformers import CLIPModel, CLIPProcessor
 
-        logger.info("Loading downloadable vision model '%s'...", self.model_id)
+        resolved_device_str = self._resolve_device(torch)
+        self.device = torch.device(resolved_device_str)
+        logger.info(
+            "Loading downloadable vision model '%s' on %s (MPS/CUDA/CPU)...",
+            self.model_id,
+            self.device,
+        )
         self._processor = CLIPProcessor.from_pretrained(self.model_id)
         self._model = CLIPModel.from_pretrained(self.model_id)
+        self._model.to(self.device)
         self._model.eval()
         self._torch = torch
 
@@ -90,9 +128,35 @@ class FoodImageClassifier:
             return_tensors="pt",
             padding=True,
         )
-        with self._torch.no_grad():
-            outputs = self._model(**inputs)
-            probs = outputs.logits_per_image.softmax(dim=1)[0].tolist()
+        if self.device is not None and self.device.type != "cpu":
+            inputs = {
+                k: v.to(self.device) if hasattr(v, "to") else v
+                for k, v in inputs.items()
+            }
+
+        try:
+            with self._torch.no_grad():
+                outputs = self._model(**inputs)
+                probs = outputs.logits_per_image.softmax(dim=1)[0].tolist()
+        except Exception as exc:
+            # Graceful fallback to CPU if accelerated device (MPS/CUDA) encounters an op error
+            if self.device is not None and self.device.type != "cpu":
+                logger.warning(
+                    "Inference failed on %s device (%s); falling back to CPU.",
+                    self.device,
+                    exc,
+                )
+                self.device = self._torch.device("cpu")
+                self._model.to(self.device)
+                inputs = {
+                    k: v.to(self.device) if hasattr(v, "to") else v
+                    for k, v in inputs.items()
+                }
+                with self._torch.no_grad():
+                    outputs = self._model(**inputs)
+                    probs = outputs.logits_per_image.softmax(dim=1)[0].tolist()
+            else:
+                raise
 
         if len(probs) >= 6:
             food_prob = float(probs[0] + probs[1])
@@ -111,6 +175,7 @@ def filter_and_move_food_images(
     food_dir_name: str = "food_images",
     non_food_dir_name: Optional[str] = "non_food_images",
     confidence_threshold: float = 0.50,
+    device: str = "auto",
     classifier: Optional[FoodImageClassifier] = None,
     show_progress: bool = True,
 ) -> Dict[str, object]:
@@ -144,6 +209,7 @@ def filter_and_move_food_images(
 
     # Collect candidate image files across images/, food_dir, and non_food_dir so re-runs
     # always evaluate all dataset images even after they were moved out of images/.
+    # Note: On macOS, hidden files (.DS_Store) and AppleDouble files (._*) are ignored.
     candidate_map: Dict[str, Path] = {}
     search_dirs = [images_dir, food_dir]
     if non_food_dir is not None:
@@ -152,14 +218,19 @@ def filter_and_move_food_images(
     for folder in search_dirs:
         if folder.exists():
             for f in sorted(folder.iterdir()):
-                if f.is_file() and f.suffix.lower() in image_extensions:
+                if (
+                    f.is_file()
+                    and not f.name.startswith(".")
+                    and f.suffix.lower() in image_extensions
+                ):
                     if f.name not in candidate_map:
                         candidate_map[f.name] = f
 
     source_files: List[Path] = [candidate_map[name] for name in sorted(candidate_map.keys())]
 
     model_classifier = classifier or FoodImageClassifier(
-        confidence_threshold=confidence_threshold
+        confidence_threshold=confidence_threshold,
+        device=device,
     )
 
     results: List[FoodClassificationResult] = []
@@ -214,7 +285,11 @@ def filter_and_move_food_images(
 
     # Also include any images that were already moved to food_dir in an earlier run
     for existing_food in sorted(food_dir.iterdir()):
-        if existing_food.is_file() and existing_food.suffix.lower() in image_extensions:
+        if (
+            existing_food.is_file()
+            and not existing_food.name.startswith(".")
+            and existing_food.suffix.lower() in image_extensions
+        ):
             food_filenames.add(existing_food.name)
 
     # Filter the main metadata CSV/JSON to produce food_images_metadata.csv and .json
@@ -251,6 +326,7 @@ def filter_and_move_food_images(
 
     summary_report: Dict[str, object] = {
         "model_id": model_classifier.model_id,
+        "device": str(model_classifier.device) if model_classifier.device else "uninitialized",
         "confidence_threshold": confidence_threshold,
         "dataset_directory": str(dataset_dir),
         "food_images_directory": str(food_dir),
