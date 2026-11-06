@@ -58,7 +58,7 @@ export function Settings({
               </div>
               <div className="theme-option__body">
                 <strong>Light theme</strong>
-                <small>Warm natural canvas with crisp sage accents</small>
+                <small>Light surfaces with a green accent</small>
               </div>
               {!dark && (
                 <Badge tone="green">
@@ -81,7 +81,7 @@ export function Settings({
               </div>
               <div className="theme-option__body">
                 <strong>Dark theme</strong>
-                <small>Deep forest tones for low-light comfort</small>
+                <small>Dark surfaces with a green accent</small>
               </div>
               {dark && (
                 <Badge tone="green">

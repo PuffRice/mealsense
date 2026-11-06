@@ -2,7 +2,7 @@
 
 ## Direction
 
-Warm, calm food journal: soft neutral canvas, deep leaf green actions, rounded surfaces, gentle fruit and meal illustrations. Show nutrition as estimates. Prefer clear labels and encouraging, neutral language. Keep tap targets comfortable and give loading, empty, error, and offline states a visible message.
+Clear food journal: neutral surfaces, one green action color, restrained borders, and simple food icons. Reserve red for destructive actions and errors. Show nutrition as estimates. Keep labels direct, tap targets comfortable, and loading, empty, error, and offline states visible.
 
 ## One place to change the look
 
@@ -14,7 +14,7 @@ Warm, calm food journal: soft neutral canvas, deep leaf green actions, rounded s
 
 ## Semantic palette
 
-`--canvas` and `--surface` provide the base. `--text` and `--text-soft` set reading hierarchy. `--brand` is the main action color; `--brand-soft` is selection/background. `--accent` and `--accent-strong` mark progress. `--peach` and `--orange` mark secondary warmth. `--danger` marks destructive actions. Hero, scan, illustration, and auth palettes have their own named tokens to keep their special treatment themeable.
+`--canvas` and `--surface` provide the base. `--text` and `--text-soft` set reading hierarchy. `--brand` is the main action and progress color; `--brand-soft` marks selected or supporting areas. `--danger` marks destructive actions. Light and dark themes use the same roles. Legacy accent aliases remain for existing components but resolve to the green or neutral palette.
 
 ## Flutter direction
 

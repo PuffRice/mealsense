@@ -3,7 +3,7 @@
   box-sizing: border-box;
 }
 html {
-  min-width: 320px;
+  min-width: 0;
 }
 body {
   margin: 0;
@@ -76,7 +76,7 @@ button:focus-visible {
     box-shadow 0.2s;
 }
 .button:not(:disabled):hover {
-  transform: translateY(-1px);
+  filter: brightness(0.97);
 }
 .button--md {
   min-height: 46px;
@@ -89,7 +89,10 @@ button:focus-visible {
 }
 .button--primary {
   background: var(--brand);
-  color: var(--surface);
+  color: var(--on-brand);
+}
+[data-theme="dark"] .button--primary {
+  color: #17251b;
 }
 .button--primary:hover {
   background: var(--brand-hover);
@@ -133,8 +136,8 @@ button:focus-visible {
   color: var(--brand);
 }
 .badge--peach {
-  background: var(--peach);
-  color: var(--orange);
+  background: var(--surface-soft);
+  color: var(--text-soft);
 }
 .badge--neutral {
   background: var(--surface-soft);
@@ -189,10 +192,10 @@ button:focus-visible {
   background: var(--brand);
 }
 .progress__fill--lime {
-  background: var(--accent-strong);
+  background: var(--brand);
 }
 .progress__fill--orange {
-  background: var(--orange);
+  background: var(--brand);
 }
 .empty-state {
   text-align: center;
@@ -223,7 +226,7 @@ button:focus-visible {
   color: var(--brand);
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0.13em;
+  letter-spacing: 0.07em;
 }
 .icon-button {
   display: grid;
@@ -388,8 +391,8 @@ button:focus-visible {
   height: 36px;
   flex: none;
   border-radius: 12px;
-  background: var(--peach);
-  color: var(--orange);
+  background: var(--brand-soft);
+  color: var(--brand);
   font-weight: 800;
 }
 .sidebar__user-info {
@@ -454,7 +457,7 @@ button:focus-visible {
   display: none;
 }
 .content {
-  max-width: 1500px;
+  max-width: 1280px;
   margin: auto;
   padding: 36px clamp(24px, 4vw, 58px) 70px;
 }
@@ -476,7 +479,7 @@ button:focus-visible {
   margin: 0;
 }
 .wave {
-  color: var(--orange);
+  color: var(--brand);
   font-size: 0.7em;
 }
 .date-pill {
@@ -511,7 +514,7 @@ button:focus-visible {
 }
 .overview-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(260px, 0.85fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.9fr);
   gap: 18px;
 }
 .hero-card {
@@ -519,33 +522,20 @@ button:focus-visible {
   justify-content: space-between;
   min-height: 280px;
   padding: 29px 31px;
-  background: linear-gradient(
-    112deg,
-    var(--hero-start),
-    var(--hero-mid) 65%,
-    var(--hero-end)
-  );
-  border: 0;
-  color: var(--on-brand);
+  background: var(--surface);
+  color: var(--text);
   overflow: hidden;
   position: relative;
 }
 .hero-card:before {
-  content: "";
-  position: absolute;
-  width: 370px;
-  height: 370px;
-  border: 1px solid var(--brand-overlay-2);
-  border-radius: 50%;
-  right: -90px;
-  top: -45px;
+  content: none;
 }
 .hero-card__copy {
   z-index: 1;
 }
 .hero-card .badge {
-  background: var(--brand-overlay-4);
-  color: var(--hero-badge);
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 .hero-card h2 {
   font-size: clamp(26px, 2.7vw, 36px);
@@ -578,7 +568,7 @@ button:focus-visible {
   padding: 12px;
   background: conic-gradient(
     var(--hero-highlight) var(--ring),
-    var(--brand-overlay-5) 0
+    var(--surface-muted) 0
   );
 }
 .calorie-ring > div {
@@ -591,7 +581,7 @@ button:focus-visible {
   justify-content: center;
 }
 .calorie-ring svg {
-  color: var(--hero-highlight);
+  color: var(--brand);
   margin-bottom: 5px;
 }
 .calorie-ring strong {
@@ -613,8 +603,7 @@ button:focus-visible {
   position: relative;
   overflow: hidden;
   padding: 27px 26px;
-  background: var(--peach);
-  border: 0;
+  background: var(--surface);
 }
 .scan-card__icon {
   width: 48px;
@@ -630,7 +619,7 @@ button:focus-visible {
   margin: 20px 0 5px;
 }
 .scan-card p {
-  max-width: 205px;
+  max-width: 260px;
   color: var(--scan-copy);
   font-size: 12px;
   margin-bottom: 22px;
@@ -638,18 +627,14 @@ button:focus-visible {
 .scan-card .button {
   position: relative;
   z-index: 2;
-  border: 0;
+  border: 1px solid var(--border);
 }
 .scan-card .food-art {
-  position: absolute;
-  right: -24px;
-  bottom: -29px;
-  opacity: 0.8;
-  transform: rotate(-16deg);
+  display: none;
 }
 .macro-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
 .macro-card {
@@ -672,10 +657,10 @@ button:focus-visible {
   background: var(--brand);
 }
 .macro-card__dot--lime {
-  background: var(--accent-strong);
+  background: var(--brand);
 }
 .macro-card__dot--orange {
-  background: var(--orange);
+  background: var(--brand);
 }
 .macro-card__value {
   font-family: var(--font-display);
@@ -696,7 +681,7 @@ button:focus-visible {
 }
 .lower-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
   margin-top: 24px;
 }
@@ -808,30 +793,19 @@ button:focus-visible {
   place-items: center;
   position: relative;
   border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    var(--food-plate) 0 48%,
-    var(--food-rim) 49% 61%,
-    transparent 62%
-  );
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 .food-art__orb {
-  position: absolute;
-  width: 105px;
-  height: 105px;
-  border-radius: 50%;
-  background: var(--food-surface);
-  box-shadow: 0 8px 22px var(--shadow-plate);
+  display: none;
 }
 .food-art__emoji {
   position: relative;
-  font-size: 70px;
-  filter: drop-shadow(0 10px 6px var(--shadow-emoji));
+  display: grid;
+  place-items: center;
 }
 .food-art__spark {
-  position: absolute;
-  color: var(--food-spark);
-  font-size: 17px;
+  display: none;
 }
 .food-art__spark--one {
   top: 2px;
@@ -843,8 +817,8 @@ button:focus-visible {
   font-size: 10px;
 }
 .food-art--compact {
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   flex: none;
   background: var(--brand-soft);
 }
@@ -852,7 +826,7 @@ button:focus-visible {
   display: none;
 }
 .food-art--compact .food-art__emoji {
-  font-size: 27px;
+  font-size: 20px;
 }
 .food-art--compact .food-art__spark {
   display: none;
@@ -867,6 +841,7 @@ button:focus-visible {
   justify-content: space-between;
   gap: 15px;
   padding-bottom: 20px;
+  flex-wrap: wrap;
 }
 .food-search {
   display: flex;
@@ -888,7 +863,8 @@ button:focus-visible {
   font-size: 13px;
 }
 .list-toolbar .food-search {
-  width: min(300px, 100%);
+  flex: 1 1 220px;
+  min-width: 0;
 }
 .filter-tabs {
   display: flex;
@@ -896,6 +872,11 @@ button:focus-visible {
   padding: 4px;
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
+  max-width: 100%;
+  overflow-x: auto;
+}
+.filter-tabs button {
+  flex: none;
 }
 .filter-tabs button {
   border: 0;
@@ -927,6 +908,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 .meal-list__date {
   display: inline-flex;
@@ -983,7 +965,7 @@ button:focus-visible {
 }
 .insight-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 18px;
 }
 .insight-stats .card {
@@ -1061,7 +1043,7 @@ button:focus-visible {
 }
 .insight-chart__track > div {
   width: 100%;
-  background: var(--accent-strong);
+  background: var(--brand);
   border-radius: 15px 15px 0 0;
 }
 .insight-chart__col:last-child .insight-chart__track > div {
@@ -1110,7 +1092,6 @@ button:focus-visible {
 }
 .theme-option:hover {
   border-color: var(--accent-strong);
-  transform: translateY(-1px);
 }
 .theme-option--active {
   background: var(--surface);
@@ -1279,13 +1260,7 @@ button:focus-visible {
   position: relative;
   height: 9px;
   border-radius: 99px;
-  background: linear-gradient(
-    90deg,
-    var(--orange) 0% 20%,
-    var(--accent-strong) 20% 50%,
-    var(--orange) 50% 73%,
-    var(--danger) 73% 100%
-  );
+  background: var(--surface-muted);
 }
 .bmi-scale__marker {
   position: absolute;
@@ -1478,7 +1453,7 @@ button:focus-visible {
 }
 .modal {
   width: min(670px, 100%);
-  max-height: min(93vh, 950px);
+  max-height: min(93dvh, 950px);
   overflow: auto;
   background: var(--surface);
   border-radius: var(--radius-xl);
@@ -1506,7 +1481,7 @@ button:focus-visible {
 }
 .editor-two {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 .editor-section {
@@ -1823,23 +1798,13 @@ button:focus-visible {
   background: var(--auth-bg);
   position: relative;
   overflow: hidden;
-  color: var(--on-brand);
+  color: var(--text);
   display: grid;
   place-items: center;
   padding: 40px;
 }
 .auth-visual__halo {
-  position: absolute;
-  width: 650px;
-  height: 650px;
-  border: 1px solid var(--brand-overlay-3);
-  border-radius: 50%;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow:
-    0 0 0 90px var(--brand-overlay-1),
-    0 0 0 190px var(--brand-overlay-1);
+  display: none;
 }
 .auth-visual__content {
   position: relative;
@@ -1854,22 +1819,9 @@ button:focus-visible {
   letter-spacing: 0.2em;
 }
 .auth-visual .food-art {
-  width: 260px;
-  height: 260px;
-  margin: 34px auto;
-  background: radial-gradient(
-    circle,
-    var(--auth-plate) 0 47%,
-    var(--auth-rim) 48% 61%,
-    transparent 62%
-  );
-}
-.auth-visual .food-art__orb {
-  width: 170px;
-  height: 170px;
-}
-.auth-visual .food-art__emoji {
-  font-size: 108px;
+  width: 112px;
+  height: 112px;
+  margin: 32px auto;
 }
 .auth-visual h2 {
   font-size: clamp(35px, 3vw, 48px);
@@ -1915,7 +1867,7 @@ button:focus-visible {
     gap: 12px;
   }
   .lower-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .content {
     padding-left: 28px;
@@ -1944,6 +1896,9 @@ button:focus-visible {
   .content {
     padding: 24px 18px 100px;
   }
+  .overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .mobile-nav {
     display: flex;
     position: fixed;
@@ -1966,7 +1921,9 @@ button:focus-visible {
     background: none;
     color: var(--text-soft);
     font-size: 10px;
-    min-width: 60px;
+    min-width: 0;
+    min-height: 48px;
+    flex: 1;
   }
   .mobile-nav .mobile-nav__active {
     color: var(--brand);
@@ -2000,16 +1957,19 @@ button:focus-visible {
     display: none;
   }
   .hero-card {
-    padding: 23px;
-    min-height: 260px;
+    padding: 20px;
+    min-height: 0;
+    flex-direction: column;
+    gap: 24px;
   }
   .hero-card__visual {
-    min-width: 120px;
+    min-width: 0;
+    align-items: flex-start;
   }
   .calorie-ring {
-    width: 115px;
-    height: 115px;
-    padding: 8px;
+    width: 126px;
+    height: 126px;
+    padding: 9px;
   }
   .calorie-ring strong {
     font-size: 24px;
@@ -2018,7 +1978,7 @@ button:focus-visible {
     width: 18px;
   }
   .calorie-ring small {
-    font-size: 8px;
+    font-size: 10px;
   }
   .hero-card__ring-label {
     font-size: 9px;
@@ -2030,16 +1990,17 @@ button:focus-visible {
     font-size: 11px;
   }
   .hero-card__copy {
-    max-width: 56%;
+    max-width: none;
   }
   .scan-card {
     min-height: 180px;
   }
   .macro-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .macro-card {
     min-height: 0;
+    padding: 16px;
   }
   .lower-grid {
     grid-template-columns: 1fr;
@@ -2053,6 +2014,7 @@ button:focus-visible {
   }
   .list-toolbar .food-search {
     width: 100%;
+    flex: none;
   }
   .filter-tabs {
     overflow: auto;
@@ -2060,6 +2022,7 @@ button:focus-visible {
   .meal-list__item {
     align-items: flex-start;
     gap: 10px;
+    flex-wrap: wrap;
   }
   .meal-list__item .food-art {
     width: 40px;
@@ -2076,6 +2039,14 @@ button:focus-visible {
   }
   .meal-list__right > strong {
     font-size: 16px;
+  }
+  .meal-list__right {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding-left: 50px;
   }
   .insight-stats {
     grid-template-columns: 1fr;
@@ -2094,8 +2065,8 @@ button:focus-visible {
     align-items: end;
   }
   .modal {
-    max-height: 95vh;
-    border-radius: 22px 22px 0 0;
+    max-height: 100dvh;
+    border-radius: 14px 14px 0 0;
   }
   .modal__head {
     padding: 20px;
@@ -2130,5 +2101,46 @@ button:focus-visible {
   .settings-card__fields,
   .auth-form__row {
     grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 420px) {
+  .content {
+    padding-inline: 14px;
+  }
+  .topbar {
+    padding-inline: 14px;
+  }
+  .topbar__mobile-brand strong {
+    font-size: 17px;
+  }
+  .topbar__actions .button {
+    min-height: 40px;
+    padding-inline: 9px;
+  }
+  .list-card,
+  .recent-card,
+  .week-card,
+  .settings-card,
+  .insight-chart {
+    padding: 16px;
+  }
+  .macro-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .modal__foot {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .modal__foot .button {
+    width: 100%;
+  }
+  .editor-item {
+    flex-wrap: wrap;
+  }
+  .editor-item__amount {
+    margin-left: 44px;
+  }
+  .mobile-nav button {
+    font-size: 9px;
   }
 }

@@ -1,11 +1,4 @@
-import {
-  ArrowRight,
-  Camera,
-  Flame,
-  Plus,
-  Sparkles,
-  Utensils,
-} from "lucide-react";
+import { ArrowRight, Camera, Flame, Plus, Utensils } from "lucide-react";
 import { Badge, Button, Card, EmptyState, Progress } from "../../design/ui";
 import { FoodArt } from "../../components/FoodArt";
 import type { Daily, Meal, User } from "../../lib/types";
@@ -109,27 +102,19 @@ export function Overview({
       <div className="page-heading">
         <div>
           <span className="eyebrow">YOUR DAILY DASHBOARD</span>
-          <h1>
-            Hello, {user.display_name?.split(" ")[0] || "friend"}{" "}
-            <span className="wave">✳</span>
-          </h1>
-          <p>A little progress every day goes a long way.</p>
+          <h1>Hello, {user.display_name?.split(" ")[0] || "friend"}</h1>
+          <p>Review your meals and nutrition for today.</p>
         </div>
         <div className="date-pill">{today}</div>
       </div>
       <div className="overview-grid">
         <Card className="hero-card">
           <div className="hero-card__copy">
-            <Badge tone="green">
-              <Sparkles size={14} /> TODAY'S SNAPSHOT
-            </Badge>
-            <h2>
-              Every meal is a<br />
-              fresh start.
-            </h2>
+            <Badge tone="green">TODAY'S SUMMARY</Badge>
+            <h2>Calories logged today</h2>
             <p>
-              Keep tracking to see the story your food tells. You're doing great
-              just by showing up.
+              Estimated from the meals you saved. Add a meal to update your
+              total.
             </p>
             <Button
               variant="secondary"
@@ -168,7 +153,6 @@ export function Overview({
           >
             Log your meal
           </Button>
-          <FoodArt variant="fruit" compact />
         </Card>
       </div>
       <div className="section-title">

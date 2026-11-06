@@ -282,7 +282,9 @@ export function MealEditor({
               const food = foods.find((item) => item.id === entry.food_id);
               return (
                 <div className="editor-item" key={entry.key}>
-                  <div className="editor-item__mark">✳</div>
+                  <div className="editor-item__mark" aria-hidden="true">
+                    •
+                  </div>
                   <div>
                     <strong>{food?.name || "Unknown food"}</strong>
                     <small>

@@ -71,11 +71,6 @@ export function Layout({
           ))}
         </nav>
         <div className="sidebar__spacer" />
-        <div className="sidebar__tip">
-          <span className="sidebar__tip-icon">✦</span>
-          <strong>Little steps add up.</strong>
-          <p>Every meal you log helps you see the bigger picture.</p>
-        </div>
         <button className="nav-item nav-item--muted" onClick={onToggleTheme}>
           {dark ? <Sun size={19} /> : <Moon size={19} />}
           <span>{dark ? "Light mode" : "Dark mode"}</span>
@@ -111,7 +106,7 @@ export function Layout({
             <strong>MealSense</strong>
           </div>
           <span className="topbar__crumb">
-            Your wellness space <span>/</span> <strong>{currentLabel}</strong>
+            MealSense <span>/</span> <strong>{currentLabel}</strong>
           </span>
           <div className="topbar__actions">
             <button
