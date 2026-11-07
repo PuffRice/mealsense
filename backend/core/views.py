@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
+from hashlib import sha256
 
 from PIL import Image, UnidentifiedImageError
 from django.contrib.auth import authenticate, login, logout, password_validation
@@ -18,10 +19,13 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Food, FoodImage, FoodPrediction, IdempotencyRecord, Meal, Profile, User
+from .models import (Food, FoodImage, FoodPrediction, Meal, NutritionGoal,
+                     NutritionRecord, NutritionSource, Profile, RecognitionResult, User)
 from .serializers import FoodSerializer, MealInputSerializer, MealSerializer, ProfileSerializer
-from .services import (date_window, matched_catalog_foods, provider_image_bytes,
-                       recognize_with_provider, replace_meal_items)
+from .services import (GOAL_FIELDS, create_meal, date_window, delete_private_image,
+                       delete_user_with_media, goal_values_for_user,
+                       matched_catalog_foods, owned_image, provider_image_bytes,
+                       recognize_with_provider, replace_meal_items, revise_profile_goal)
 
 
 @ensure_csrf_cookie
@@ -94,8 +98,12 @@ class LogoutView(APIView):
 
 def user_payload(user):
     profile, _ = Profile.objects.get_or_create(user=user)
+    profile_data = ProfileSerializer(profile).data
+    goal_values = goal_values_for_user(user)
+    if goal_values is not None:
+        profile_data.update(goal_values)
     return {'id': str(user.id), 'email': user.email, 'display_name': user.display_name,
-            'profile': ProfileSerializer(profile).data}
+            'profile': profile_data}
 
 
 class MeView(APIView):
@@ -114,30 +122,32 @@ class MeView(APIView):
             ZoneInfo(serializer.validated_data.get('timezone', profile.timezone))
         except Exception:
             raise ValidationError({'timezone': 'Unknown timezone.'}) from None
-        serializer.save()
-        if 'display_name' in request.data:
-            request.user.display_name = str(request.data['display_name']).strip()[:80]
-            request.user.save(update_fields=['display_name'])
+        with transaction.atomic():
+            serializer.save()
+            if any(field in raw_profile for field in GOAL_FIELDS):
+                revise_profile_goal(profile)
+            if 'display_name' in request.data:
+                request.user.display_name = str(request.data['display_name']).strip()[:80]
+                request.user.save(update_fields=['display_name'])
         return Response(user_payload(request.user))
 
     def delete(self, request):
         user = request.user
         if not user.check_password(str(request.data.get('password', ''))):
             raise ValidationError({'password': 'Enter your current password to delete your account.'})
-        files = list(FoodImage.objects.filter(user=user).values_list('file', flat=True))
+        delete_user_with_media(user)
         logout(request)
-        user.delete()
-        for file_name in files:
-            FoodImage._meta.get_field('file').storage.delete(file_name)
         return Response(status=204)
 
 
 class FoodListView(APIView):
     def get(self, request):
         query = str(request.query_params.get('q', '')).strip()[:80]
-        foods = Food.objects.filter(Q(created_by=request.user) | Q(created_by__isnull=True))
+        foods = Food.objects.filter(Q(created_by=request.user) | Q(created_by__isnull=True), is_active=True)
+        foods = foods.select_related('current_nutrition__active_record__source').prefetch_related('servings')
         if query:
-            foods = foods.filter(name__icontains=query)
+            foods = foods.filter(Q(name__icontains=query) | Q(name_bn__icontains=query) |
+                                 Q(aliases__alias__icontains=query)).distinct()
         return Response(FoodSerializer(foods[:100], many=True).data)
 
     def post(self, request):
@@ -146,17 +156,20 @@ class FoodListView(APIView):
         data['source_ref'] = ''
         serializer = FoodSerializer(data=data)
         serializer.is_valid(raise_exception=True)
-        food = serializer.save(created_by=request.user)
+        with transaction.atomic():
+            food = serializer.save(created_by=request.user)
+            source, _ = NutritionSource.objects.get_or_create(name='User supplied')
+            NutritionRecord.objects.create(
+                food=food, source=source, version=1, verification_status='user_supplied',
+                nutrient_values={
+                    'kcal': str(food.kcal_100g), 'protein_g': str(food.protein_100g),
+                    'carbs_g': str(food.carbs_100g), 'fat_g': str(food.fat_100g),
+                })
         return Response(FoodSerializer(food).data, status=201)
 
 
 def user_image(user, image_id):
-    if not image_id:
-        return None
-    try:
-        return FoodImage.objects.get(pk=image_id, user=user)
-    except FoodImage.DoesNotExist:
-        raise ValidationError({'image_id': 'Image not found.'}) from None
+    return owned_image(user, image_id)
 
 
 class MealListView(APIView):
@@ -172,19 +185,8 @@ class MealListView(APIView):
     def post(self, request):
         serializer = MealInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
-        operation_id = data.get('operation_id')
-        with transaction.atomic():
-            if operation_id:
-                existing = IdempotencyRecord.objects.filter(user=request.user, operation_id=operation_id).select_related('meal').first()
-                if existing:
-                    return Response(MealSerializer(existing.meal).data)
-            meal = Meal.objects.create(user=request.user, eaten_at=data['eaten_at'], meal_type=data['meal_type'],
-                                       notes=data.get('notes', ''), image=user_image(request.user, data.get('image_id')))
-            replace_meal_items(meal, data['items'])
-            if operation_id:
-                IdempotencyRecord.objects.create(user=request.user, operation_id=operation_id, meal=meal)
-        return Response(MealSerializer(meal).data, status=201)
+        _, created, response_snapshot = create_meal(request.user, serializer.validated_data)
+        return Response(response_snapshot, status=201 if created else 200)
 
 
 class MealDetailView(APIView):
@@ -221,8 +223,7 @@ class MealDetailView(APIView):
         image = meal.image
         meal.delete()
         if image and not Meal.objects.filter(image=image).exists():
-            image.file.delete(save=False)
-            image.delete()
+            delete_private_image(request.user, image.id)
         return Response(status=204)
 
 
@@ -241,7 +242,28 @@ class DailyView(APIView):
         date = request.query_params.get('date') or timezone.localtime(timezone.now(), ZoneInfo(profile.timezone)).date().isoformat()
         start, end = date_window(date, profile.timezone)
         meals = Meal.objects.filter(user=request.user, eaten_at__gte=start, eaten_at__lt=end).prefetch_related('items')
-        return Response({'date': date, 'totals': totals(meals), 'meal_count': meals.count()})
+        daily_totals = totals(meals)
+        goal = (NutritionGoal.objects.filter(user=request.user, effective_from__lte=date)
+                .filter(Q(effective_until__isnull=True) | Q(effective_until__gt=date))
+                .prefetch_related('targets').order_by('-version').first())
+        progress = []
+        if goal:
+            for target in goal.targets.all():
+                actual = Decimal(daily_totals.get(target.nutrient_name, '0'))
+                progress.append({'nutrient': target.nutrient_name, 'actual': str(actual),
+                                 'target': str(target.target_value), 'unit': target.unit,
+                                 'goal_version': goal.version})
+        return Response({'date': date, 'totals': daily_totals, 'meal_count': meals.count(), 'progress': progress})
+
+
+class NutritionGoalsView(APIView):
+    def get(self, request):
+        goals = NutritionGoal.objects.filter(user=request.user).prefetch_related('targets').order_by('-version')[:50]
+        return Response([{'id': goal.id, 'version': goal.version, 'effective_from': goal.effective_from,
+                          'effective_until': goal.effective_until, 'status': goal.status,
+                          'targets': [{'nutrient': target.nutrient_name, 'value': str(target.target_value),
+                                       'unit': target.unit, 'type': target.target_type} for target in goal.targets.all()]}
+                         for goal in goals])
 
 
 class WeeklyView(APIView):
@@ -279,15 +301,30 @@ class RecognitionView(APIView):
         except (UnidentifiedImageError, ValueError, OSError, Image.DecompressionBombError):
             raise ValidationError({'image': 'Use a valid JPEG, PNG, or WebP under 20 megapixels.'}) from None
         upload.name = f'{uuid4().hex}.{extension}'
+        checksum = sha256(upload.read()).hexdigest()
+        upload.seek(0)
         provider_bytes, provider_mime = provider_image_bytes(image)
         upload.seek(0)
-        stored = FoodImage.objects.create(user=request.user, file=upload, mime_type=mime, size_bytes=upload.size)
+        stored = FoodImage.objects.create(user=request.user, file=upload, mime_type=mime,
+                                         size_bytes=upload.size, width=image.width,
+                                         height=image.height, checksum=checksum)
         result = recognize_with_provider(provider_bytes, provider_mime)
         food_ids = matched_catalog_foods(result['candidates'], request.user)
-        candidates = [dict(item, food_id=food_ids.get(item['name'])) for item in result['candidates']]
-        prediction = FoodPrediction.objects.create(user=request.user, image=stored, status=result['status'],
-                                                   model_version=result['model_version'],
-                                                   candidates=candidates, error_code=result['error_code'])
+        with transaction.atomic():
+            prediction = FoodPrediction.objects.create(user=request.user, image=stored, status=result['status'],
+                                                       model_version=result['model_version'],
+                                                       candidates=[], error_code=result['error_code'],
+                                                       completed_at=timezone.now())
+            candidates = []
+            for rank, item in enumerate(result['candidates'], start=1):
+                food_id = food_ids.get(item['name'])
+                saved_result = RecognitionResult.objects.create(
+                    session=prediction, food_id=food_id, original_label=item['name'],
+                    normalized_label=item['name'].casefold().strip(), rank=rank,
+                    confidence=Decimal(str(item['confidence'])))
+                candidates.append(dict(item, food_id=food_id, result_id=str(saved_result.id)))
+            prediction.candidates = candidates
+            prediction.save(update_fields=['candidates'])
         messages = {
             'completed': 'These are suggestions only. Confirm the food and serving size before saving.',
             'failed': 'Recognition failed. Add food manually.',
@@ -319,3 +356,8 @@ class PrivateImageView(APIView):
         response = FileResponse(image.file.open('rb'), content_type=image.mime_type)
         response['Cache-Control'] = 'private, no-store'
         return response
+
+    def delete(self, request, pk):
+        if not delete_private_image(request.user, pk):
+            raise Http404
+        return Response(status=204)

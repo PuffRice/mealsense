@@ -6,9 +6,12 @@ from unittest.mock import patch
 from uuid import uuid4
 from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
-from .models import Food, FoodImage, FoodPrediction, Meal, Profile, User
+from .models import (Food, FoodAlias, FoodImage, FoodNutrition, FoodPrediction, FoodServing, Meal, MediaDeletionJob,
+                     NutritionGoal, NutritionRecord, NutritionSource,
+                     RecognitionResult, Profile, User)
 from .services import ProviderError, normalize_candidates
 
 
@@ -48,6 +51,101 @@ class MealApiTests(TestCase):
         self.food.save()
         self.assertEqual(Decimal(self.client.get('/api/v1/meals/').json()[0]['totals']['kcal']), Decimal('195.00'))
 
+    def test_reused_operation_id_with_changed_payload_is_conflict(self):
+        operation_id = str(uuid4())
+        self.assertEqual(self.post('/api/v1/meals/', self.payload(operation_id=operation_id)).status_code, 201)
+        changed = self.post('/api/v1/meals/', self.payload(operation_id=operation_id,
+            items=[{'food_id': str(self.food.id), 'grams': 300}]))
+        self.assertEqual(changed.status_code, 409)
+        self.assertEqual(Meal.objects.count(), 1)
+
+    def test_retry_returns_original_response_after_meal_deletion(self):
+        payload = self.payload(operation_id=str(uuid4()))
+        first = self.post('/api/v1/meals/', payload)
+        self.assertEqual(first.status_code, 201, first.content)
+        self.assertEqual(self.client.delete(f"/api/v1/meals/{first.json()['id']}/",
+                                            HTTP_X_CSRFTOKEN=self.csrf).status_code, 204)
+        retry = self.post('/api/v1/meals/', payload)
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(retry.json(), first.json())
+        self.assertEqual(Meal.objects.count(), 0)
+
+    def test_custom_food_creates_versioned_source_and_meal_snapshot(self):
+        response = self.post('/api/v1/foods/', {'name': 'Home dal', 'category': 'My foods',
+            'kcal_100g': '120', 'protein_100g': '7', 'carbs_100g': '16', 'fat_100g': '3'})
+        self.assertEqual(response.status_code, 201, response.content)
+        food = Food.objects.get(pk=response.json()['id'])
+        record = NutritionRecord.objects.get(food=food)
+        self.assertEqual(record.verification_status, 'user_supplied')
+        meal = self.post('/api/v1/meals/', self.payload(items=[{'food_id': str(food.id), 'grams': 200}]))
+        self.assertEqual(meal.status_code, 201, meal.content)
+        item = meal.json()['items'][0]
+        self.assertEqual(Decimal(item['kcal']), Decimal('240.00'))
+        self.assertEqual(item['nutrition_source_snapshot'], 'User supplied')
+        self.assertEqual(item['calculation_version'], 'v3-1')
+
+    def test_food_specific_serving_and_bengali_alias(self):
+        FoodAlias.objects.create(food=self.food, alias='bhaat', language='bn')
+        serving = FoodServing.objects.create(food=self.food, name='small bowl',
+            definition='Cooked rice in a 200 ml bowl', weight_g=150, preparation_state='cooked')
+        foods = self.client.get('/api/v1/foods/?q=bhaat').json()
+        self.assertEqual(len(foods), 1)
+        self.assertEqual(foods[0]['servings'][0]['weight_g'], '150.00')
+        meal = self.post('/api/v1/meals/', self.payload(items=[
+            {'food_id': str(self.food.id), 'grams': 150, 'serving_id': serving.id}]))
+        self.assertEqual(meal.status_code, 201, meal.content)
+        self.assertEqual(meal.json()['items'][0]['serving'], serving.id)
+        other_food = Food.objects.create(name='Other food', kcal_100g=1, protein_100g=1,
+            carbs_100g=1, fat_100g=1, source='Test fixture')
+        mismatch = self.post('/api/v1/meals/', self.payload(items=[
+            {'food_id': str(other_food.id), 'grams': 150, 'serving_id': serving.id}]))
+        self.assertEqual(mismatch.status_code, 400)
+
+    def test_unapproved_nutrition_revision_does_not_change_logged_amount(self):
+        source = NutritionSource.objects.create(name='New import')
+        NutritionRecord.objects.create(food=self.food, source=source, version=2,
+            verification_status='unverified', nutrient_values={
+                'kcal': '999', 'protein_g': '1', 'carbs_g': '1', 'fat_g': '1'})
+        meal = self.post('/api/v1/meals/', self.payload())
+        self.assertEqual(meal.status_code, 201, meal.content)
+        self.assertEqual(Decimal(meal.json()['items'][0]['kcal']), Decimal('195.00'))
+
+    def test_goal_revision_is_dated_and_progress_uses_target(self):
+        first = self.client.patch('/api/v1/users/me/',
+            data=json.dumps({'profile': {'daily_kcal_goal': 2000, 'protein_goal_g': 80}}),
+            content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(first.status_code, 200, first.content)
+        second = self.client.patch('/api/v1/users/me/',
+            data=json.dumps({'profile': {'daily_kcal_goal': 2200}}),
+            content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(second.status_code, 200, second.content)
+        self.assertEqual(NutritionGoal.objects.filter(user=self.user).count(), 2)
+        self.assertEqual(second.json()['profile']['daily_kcal_goal'], 2200)
+        goals = self.client.get('/api/v1/nutrition/goals/').json()
+        self.assertEqual(goals[0]['version'], 2)
+        self.assertEqual(goals[0]['targets'][0]['nutrient'], 'kcal')
+        day = self.client.get('/api/v1/nutrition/daily/').json()
+        self.assertEqual(day['progress'][0]['target'], '2200.00')
+
+    def test_active_nutrition_must_match_food_and_be_approved(self):
+        source = NutritionSource.objects.create(name='Fixture')
+        other_food = Food.objects.create(name='Other', kcal_100g=1, protein_100g=1,
+            carbs_100g=1, fat_100g=1, source='Fixture')
+        record = NutritionRecord.objects.create(food=other_food, source=source, version=1,
+            verification_status='approved', nutrient_values={'kcal': '1'})
+        with self.assertRaises(DjangoValidationError):
+            FoodNutrition.objects.create(food=self.food, active_record=record)
+
+    def test_active_nutrition_record_cannot_be_rewritten(self):
+        source = NutritionSource.objects.create(name='Reviewed')
+        record = NutritionRecord.objects.create(food=self.food, source=source, version=1,
+            verification_status='approved', nutrient_values={
+                'kcal': '130', 'protein_g': '2.7', 'carbs_g': '28', 'fat_g': '0.3'})
+        FoodNutrition.objects.create(food=self.food, active_record=record)
+        record.nutrient_values['kcal'] = '999'
+        with self.assertRaises(DjangoValidationError):
+            record.save()
+
     def test_owner_access_and_foreign_custom_food_blocked(self):
         meal_id = self.post('/api/v1/meals/', self.payload()).json()['id']
         private_food = Food.objects.create(name='Private food', kcal_100g=1, protein_100g=1,
@@ -73,6 +171,10 @@ class MealApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_account_deletion_requires_password(self):
+        private = self.post('/api/v1/foods/', {'name': 'Private dal', 'kcal_100g': 120,
+            'protein_100g': 7, 'carbs_100g': 16, 'fat_100g': 3})
+        self.assertEqual(private.status_code, 201, private.content)
+        self.assertTrue(NutritionRecord.objects.filter(food_id=private.json()['id']).exists())
         self.assertEqual(self.client.delete('/api/v1/users/me/', data=json.dumps({'password': 'wrong'}),
             content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf).status_code, 400)
         self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
@@ -95,6 +197,23 @@ class MealApiTests(TestCase):
             img_res.close()
             self.client.logout()
             self.assertEqual(self.client.get(f'/api/v1/images/{image_id}/').status_code, 403)
+
+    def test_image_delete_detaches_meal_and_removes_bytes(self):
+        with tempfile.TemporaryDirectory() as folder, override_settings(MEDIA_ROOT=folder):
+            upload = self.client.post('/api/v1/recognitions/', data={'image': png_upload()},
+                                      HTTP_X_CSRFTOKEN=self.csrf)
+            self.assertEqual(upload.status_code, 201, upload.content)
+            image_id = upload.json()['image_id']
+            file_name = FoodImage.objects.get(pk=image_id).file.name
+            meal = self.post('/api/v1/meals/', self.payload(image_id=image_id))
+            self.assertEqual(meal.status_code, 201, meal.content)
+            with self.captureOnCommitCallbacks(execute=True):
+                removed = self.client.delete(f'/api/v1/images/{image_id}/', HTTP_X_CSRFTOKEN=self.csrf)
+            self.assertEqual(removed.status_code, 204)
+            self.assertFalse(FoodImage.objects.filter(pk=image_id).exists())
+            self.assertIsNone(Meal.objects.get(pk=meal.json()['id']).image_id)
+            self.assertFalse(FoodImage._meta.get_field('file').storage.exists(file_name))
+            self.assertIsNotNone(MediaDeletionJob.objects.get(storage_key=file_name).completed_at)
 
     def test_admin_models_registered_and_accessible(self):
         self.user.is_staff = True
@@ -232,6 +351,9 @@ class RecognitionTests(TestCase):
         self.assertIn('data:image/jpeg;base64,', request_body)
         prediction = FoodPrediction.objects.get(pk=body['id'])
         self.assertEqual(prediction.status, 'completed')
+        self.assertEqual(RecognitionResult.objects.filter(session=prediction).count(), 2)
+        self.assertEqual(body['candidates'][0]['result_id'],
+                         str(RecognitionResult.objects.get(session=prediction, rank=1).id))
 
     @override_settings(AI_PROVIDER='gemini', AI_VISION_MODEL='test-model',
                        AI_API_KEYS={'openai': '', 'gemini': 'test-key'})

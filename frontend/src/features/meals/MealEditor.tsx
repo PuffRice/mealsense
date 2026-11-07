@@ -11,7 +11,13 @@ function localDateTime(date?: string) {
     .toISOString()
     .slice(0, 16);
 }
-type Entry = { key: string; food_id: string; grams: number };
+type Entry = {
+  key: string;
+  food_id: string;
+  grams: number;
+  serving_id?: number;
+  recognition_result_id?: string;
+};
 export function MealEditor({
   meal,
   userId,
@@ -37,6 +43,8 @@ export function MealEditor({
       key: item.id,
       food_id: item.food,
       grams: Number(item.grams),
+      serving_id: item.serving || undefined,
+      recognition_result_id: item.recognition_result || undefined,
     })) || [],
   );
   const [query, setQuery] = useState("");
@@ -78,7 +86,7 @@ export function MealEditor({
       void saveDraft({ userId, kind, when, notes, entries }).catch(() => {});
   }, [meal, draftReady, userId, kind, when, notes, entries]);
   const filtered = foods
-    .filter((food) => food.name.toLowerCase().includes(query.toLowerCase()))
+    .filter((food) => (food.name + " " + (food.name_bn || "")).toLowerCase().includes(query.toLowerCase()))
     .slice(0, 8);
   const estimate = useMemo(
     () =>
@@ -88,10 +96,10 @@ export function MealEditor({
       }, 0),
     [entries, foods],
   );
-  function addFood(food: Food) {
+  function addFood(food: Food, recognitionResultId?: string) {
     setEntries([
       ...entries,
-      { key: crypto.randomUUID(), food_id: food.id, grams: 100 },
+      { key: crypto.randomUUID(), food_id: food.id, grams: 100, recognition_result_id: recognitionResultId },
     ]);
     setQuery("");
   }
@@ -131,6 +139,7 @@ export function MealEditor({
     setSuggestions([]);
     setPhotoNotice("");
     setPhoto(file);
+    if (file) setEntries((current) => current.map((entry) => ({ ...entry, recognition_result_id: undefined })));
     if (!file) return;
     if (!navigator.onLine) {
       setError(
@@ -157,7 +166,7 @@ export function MealEditor({
     const food = candidate.food_id
       ? foods.find((item) => item.id === candidate.food_id)
       : undefined;
-    if (food) addFood(food);
+    if (food) addFood(food, candidate.result_id);
     else setQuery(candidate.name);
   }
   async function save(event: React.FormEvent) {
@@ -180,7 +189,7 @@ export function MealEditor({
         meal_type: kind,
         notes,
         image_id: imageId,
-        items: entries.map(({ food_id, grams }) => ({ food_id, grams })),
+        items: entries.map(({ food_id, grams, serving_id, recognition_result_id }) => ({ food_id, grams, serving_id, recognition_result_id })),
         operation_id: operationId,
       };
       if (meal)
@@ -294,6 +303,26 @@ export function MealEditor({
                       )}{" "}
                       kcal
                     </small>
+                    {!!food?.servings?.length && (
+                      <select
+                        className="editor-item__serving"
+                        aria-label={`Serving for ${food.name}`}
+                        value={entry.serving_id || ""}
+                        onChange={(event) => {
+                          const serving = food.servings?.find((option) => option.id === Number(event.target.value));
+                          setEntries(entries.map((item) => item.key === entry.key
+                            ? { ...item, serving_id: serving?.id, grams: serving ? Number(serving.weight_g) : item.grams }
+                            : item));
+                        }}
+                      >
+                        <option value="">Custom weight in grams</option>
+                        {food.servings.map((serving) => (
+                          <option key={serving.id} value={serving.id}>
+                            {serving.name} · {serving.weight_g} g{serving.is_approximate ? " approx." : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div className="editor-item__amount">
                     <input
@@ -305,7 +334,7 @@ export function MealEditor({
                         setEntries(
                           entries.map((item) =>
                             item.key === entry.key
-                              ? { ...item, grams: Number(event.target.value) }
+                              ? { ...item, grams: Number(event.target.value), serving_id: undefined }
                               : item,
                           ),
                         )

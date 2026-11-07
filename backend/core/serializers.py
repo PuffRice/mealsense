@@ -36,16 +36,41 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 class FoodSerializer(serializers.ModelSerializer):
+    servings = serializers.SerializerMethodField()
+
     class Meta:
         model = Food
-        fields = ['id', 'name', 'category', 'kcal_100g', 'protein_100g', 'carbs_100g', 'fat_100g', 'source', 'source_ref', 'is_sample']
-        read_only_fields = ['id', 'is_sample']
+        fields = ['id', 'name', 'name_bn', 'category', 'kcal_100g', 'protein_100g', 'carbs_100g', 'fat_100g',
+                  'source', 'source_ref', 'is_sample', 'is_verified', 'servings']
+        read_only_fields = ['id', 'is_sample', 'is_verified', 'servings']
+
+    def get_servings(self, instance):
+        return [{'id': serving.id, 'name': serving.name, 'name_bn': serving.name_bn,
+                 'definition': serving.definition, 'weight_g': str(serving.weight_g),
+                 'preparation_state': serving.preparation_state,
+                 'is_approximate': serving.is_approximate, 'is_default': serving.is_default}
+                for serving in instance.servings.all()]
+
+    def to_representation(self, instance):
+        result = super().to_representation(instance)
+        pointer = getattr(instance, 'current_nutrition', None)
+        if pointer:
+            record = pointer.active_record
+            factor = Decimal('100') / record.basis_quantity
+            for name, field in (('kcal', 'kcal_100g'), ('protein_g', 'protein_100g'),
+                                ('carbs_g', 'carbs_100g'), ('fat_g', 'fat_100g')):
+                value = record.nutrient_values.get(name)
+                result[field] = str((Decimal(str(value)) * factor).quantize(Decimal('0.01'))) if value is not None else None
+            result['source'] = record.source.name
+            result['source_ref'] = record.source.reference
+        return result
 
 
 class MealItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = MealItem
-        fields = ['id', 'food', 'food_name', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g']
+        fields = ['id', 'food', 'food_name', 'grams', 'serving', 'kcal', 'protein_g', 'carbs_g', 'fat_g',
+                  'recognition_result', 'nutrition_source_snapshot', 'nutrition_basis_snapshot', 'calculation_version']
 
 
 class MealSerializer(serializers.ModelSerializer):
@@ -79,6 +104,11 @@ class MealInputSerializer(serializers.Serializer):
                 raise serializers.ValidationError('Each item needs food_id and grams.')
             try:
                 UUID(str(item['food_id']))
+                if item.get('serving_id'):
+                    if int(item['serving_id']) <= 0:
+                        raise ValueError()
+                if item.get('recognition_result_id'):
+                    UUID(str(item['recognition_result_id']))
                 grams = Decimal(str(item['grams']))
                 if not grams.is_finite() or grams <= 0 or grams > 10000:
                     raise ValueError()

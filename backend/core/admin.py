@@ -3,12 +3,22 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from .models import (
     Food,
+    FoodAlias,
     FoodImage,
+    FoodNutrition,
     FoodPrediction,
+    FoodServing,
+    GoalProgress,
     IdempotencyRecord,
     Meal,
     MealItem,
+    MediaDeletionJob,
+    NutrientTarget,
+    NutritionGoal,
+    NutritionRecord,
+    NutritionSource,
     Profile,
+    RecognitionResult,
     User,
 )
 
@@ -91,3 +101,74 @@ class IdempotencyRecordAdmin(admin.ModelAdmin):
     list_display = ('user', 'operation_id', 'meal')
     search_fields = ('user__email', 'operation_id')
     raw_id_fields = ('user', 'meal')
+
+
+@admin.register(FoodAlias)
+class FoodAliasAdmin(admin.ModelAdmin):
+    list_display = ('alias', 'food', 'language', 'region', 'is_verified')
+    search_fields = ('alias', 'food__name')
+    raw_id_fields = ('food',)
+
+
+@admin.register(FoodServing)
+class FoodServingAdmin(admin.ModelAdmin):
+    list_display = ('name', 'food', 'weight_g', 'preparation_state', 'is_default')
+    search_fields = ('name', 'food__name')
+    raw_id_fields = ('food',)
+
+
+@admin.register(NutritionSource)
+class NutritionSourceAdmin(admin.ModelAdmin):
+    list_display = ('name', 'reference', 'is_trusted', 'retrieved_at')
+    search_fields = ('name', 'reference')
+
+
+@admin.register(NutritionRecord)
+class NutritionRecordAdmin(admin.ModelAdmin):
+    list_display = ('food', 'version', 'source', 'verification_status', 'basis_quantity', 'basis_unit')
+    list_filter = ('verification_status', 'basis_unit')
+    search_fields = ('food__name', 'source__name')
+    raw_id_fields = ('food', 'source')
+    readonly_fields = ('created_at',)
+
+    def has_change_permission(self, request, obj=None):
+        if obj and FoodNutrition.objects.filter(active_record=obj).exists():
+            return False
+        return super().has_change_permission(request, obj)
+
+
+@admin.register(FoodNutrition)
+class FoodNutritionAdmin(admin.ModelAdmin):
+    list_display = ('food', 'active_record', 'updated_at')
+    raw_id_fields = ('food', 'active_record')
+    readonly_fields = ('updated_at',)
+
+
+@admin.register(RecognitionResult)
+class RecognitionResultAdmin(admin.ModelAdmin):
+    list_display = ('session', 'rank', 'original_label', 'food', 'confidence')
+    raw_id_fields = ('session', 'detection', 'food')
+
+
+@admin.register(NutritionGoal)
+class NutritionGoalAdmin(admin.ModelAdmin):
+    list_display = ('user', 'version', 'status', 'effective_from', 'effective_until')
+    raw_id_fields = ('user',)
+
+
+@admin.register(NutrientTarget)
+class NutrientTargetAdmin(admin.ModelAdmin):
+    list_display = ('goal', 'nutrient_name', 'target_value', 'unit', 'target_type')
+    raw_id_fields = ('goal',)
+
+
+@admin.register(GoalProgress)
+class GoalProgressAdmin(admin.ModelAdmin):
+    list_display = ('goal', 'target', 'progress_date', 'actual_value', 'target_value')
+    raw_id_fields = ('goal', 'target')
+
+
+@admin.register(MediaDeletionJob)
+class MediaDeletionJobAdmin(admin.ModelAdmin):
+    list_display = ('storage_key', 'attempts', 'requested_at', 'completed_at', 'last_error_code')
+    readonly_fields = ('storage_key', 'attempts', 'requested_at', 'completed_at', 'last_error_code')
