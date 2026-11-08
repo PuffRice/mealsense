@@ -1,73 +1,154 @@
 :root {
   font-family: var(--font-body);
   color: var(--text);
-  background: var(--canvas);
+  background-color: var(--canvas);
   font-synthesis: none;
-  --font-body: "DM Sans", sans-serif;
-  --font-display: "DM Sans", sans-serif;
-  --canvas: #f7f8f7;
-  --surface: #ffffff;
-  --surface-soft: #f3f5f3;
-  --surface-muted: #e8ece9;
-  --text: #1d2923;
-  --text-soft: #617067;
-  --border: #dfe5e0;
-  --brand: #245b43;
-  --brand-hover: #1c4935;
-  --brand-soft: #e8f1eb;
-  --accent: #c9dacd;
-  --accent-strong: #245b43;
-  --peach: #f3f5f3;
-  --orange: #245b43;
-  --danger: #aa3f39;
-  --shadow: 0 2px 10px rgba(24, 45, 32, 0.035);
+  color-scheme: light;
+
+  /* Typography */
+  --font-body:
+    "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display:
+    "Outfit", "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Full-Application Atmospheric Canvas & Background SVG */
+  --canvas: #edf4ef;
+  --canvas-deep: #e2ede6;
+  --app-bg-light: url("/bg-light.svg"), url("/bg.svg");
+  --app-bg-dark: url("/bg-dark.svg"), url("/bg.svg");
+  --app-bg-image: var(--app-bg-light);
+
+  /* Glass Surface System (Light Mode) */
+  --glass-opacity: 0.64;
+  --glass-opacity-elevated: 0.78;
+  --glass-opacity-subtle: 0.46;
+  --glass-surface: rgba(255, 255, 255, var(--glass-opacity));
+  --glass-surface-elevated: rgba(255, 255, 255, var(--glass-opacity-elevated));
+  --glass-surface-subtle: rgba(255, 255, 255, var(--glass-opacity-subtle));
+  --glass-surface-hover: rgba(255, 255, 255, 0.82);
+  --glass-sidebar: rgba(255, 255, 255, 0.68);
+  --glass-navbar: rgba(255, 255, 255, 0.62);
+  --glass-modal: rgba(252, 254, 253, 0.84);
+  --glass-input: rgba(255, 255, 255, 0.62);
+  --glass-input-focus: rgba(255, 255, 255, 0.9);
+  --glass-dropdown: rgba(255, 255, 255, 0.88);
+
+  /* Legacy surface aliases mapped to Glass system */
+  --surface: var(--glass-surface);
+  --surface-soft: var(--glass-surface-subtle);
+  --surface-muted: rgba(26, 67, 49, 0.08);
+
+  /* Backdrop Blur Intensity */
+  --blur-xs: 8px;
+  --blur-sm: 14px;
+  --blur-md: 22px;
+  --blur-lg: 30px;
+  --blur-xl: 40px;
+  --glass-saturate: 165%;
+
+  /* Borders & Specular Liquid Highlights */
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-border-subtle: rgba(26, 67, 49, 0.09);
+  --glass-border-strong: rgba(28, 92, 65, 0.24);
+  --glass-highlight-inset: rgba(255, 255, 255, 0.85);
+  --glass-rim-bottom: rgba(22, 58, 42, 0.06);
+  --border: rgba(26, 67, 49, 0.11);
+
+  /* Text Hierarchy */
+  --text: #11231b;
+  --text-soft: #4c6458;
+  --text-muted: #6f867a;
+
+  /* Brand & Accents (MealSense Emerald & Organic Greens) */
+  --brand: #185a40;
+  --brand-hover: #124732;
+  --brand-soft: rgba(24, 90, 64, 0.11);
+  --brand-glow: rgba(34, 139, 96, 0.22);
+  --accent: rgba(36, 107, 77, 0.26);
+  --accent-strong: #1e6b4c;
   --on-brand: #ffffff;
-  --nav-label: #69776e;
-  --nav-divider: #aeb9b0;
-  --tip-bg: #f3f5f3;
-  --tip-title: #1d2923;
-  --tip-copy: #617067;
-  --hero-start: #ffffff;
-  --hero-mid: #ffffff;
-  --hero-end: #ffffff;
-  --hero-inner: #ffffff;
-  --hero-copy: #617067;
-  --hero-soft: #617067;
-  --hero-badge: #245b43;
-  --hero-highlight: #245b43;
-  --hero-button-bg: #245b43;
+
+  /* Macronutrient Semantic Accents */
+  --macro-protein: #185a40;
+  --macro-carbs: #2b8a64;
+  --macro-fat: #4b9b6e;
+  --peach: rgba(255, 255, 255, 0.55);
+  --orange: #2b8a64;
+
+  /* Status & Semantic Alerts */
+  --danger: #b83b34;
+  --danger-soft: rgba(184, 59, 52, 0.1);
+  --error-bg: rgba(255, 238, 235, 0.78);
+  --error-text: #a6322b;
+
+  /* Layered Depth & Shadows */
+  --glass-shadow-sm:
+    0 4px 14px -2px rgba(16, 42, 30, 0.05), 0 1px 3px rgba(16, 42, 30, 0.04),
+    inset 0 1px 0 0 var(--glass-highlight-inset);
+  --glass-shadow:
+    0 12px 32px -8px rgba(15, 44, 31, 0.07),
+    0 2px 8px -2px rgba(15, 44, 31, 0.04),
+    inset 0 1px 0 0 var(--glass-highlight-inset);
+  --glass-shadow-lg:
+    0 20px 48px -12px rgba(14, 42, 29, 0.11),
+    0 4px 14px -3px rgba(14, 42, 29, 0.05),
+    inset 0 1px 0 0 var(--glass-highlight-inset);
+  --glass-shadow-sidebar:
+    0 18px 44px -10px rgba(14, 42, 29, 0.09), 0 2px 10px rgba(14, 42, 29, 0.04),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+  --glass-shadow-modal:
+    0 32px 80px -16px rgba(10, 30, 21, 0.22),
+    0 8px 24px -6px rgba(10, 30, 21, 0.1),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.92);
+
+  --shadow: var(--glass-shadow);
+  --shadow-button: rgba(24, 90, 64, 0.22);
+  --shadow-small: rgba(15, 44, 31, 0.06);
+  --shadow-mobile: rgba(15, 44, 31, 0.1);
+  --shadow-plate: rgba(18, 55, 39, 0.12);
+  --shadow-dialog: rgba(10, 28, 20, 0.24);
+  --dialog-backdrop: rgba(12, 28, 20, 0.36);
+  --shadow-emoji: rgba(15, 44, 31, 0.07);
+
+  /* Component-Specific Tokens */
+  --nav-label: #5c7568;
+  --nav-divider: rgba(26, 67, 49, 0.22);
+  --tip-bg: rgba(255, 255, 255, 0.52);
+  --tip-title: #11231b;
+  --tip-copy: #4c6458;
+  --hero-start: rgba(255, 255, 255, 0.72);
+  --hero-mid: rgba(242, 250, 245, 0.64);
+  --hero-end: rgba(230, 244, 236, 0.58);
+  --hero-inner: rgba(250, 253, 251, 0.88);
+  --hero-copy: #486054;
+  --hero-soft: #597265;
+  --hero-badge: #185a40;
+  --hero-highlight: #1f7a56;
+  --hero-button-bg: #185a40;
   --hero-button-text: #ffffff;
-  --scan-icon-bg: #e8f1eb;
-  --scan-icon: #245b43;
-  --scan-copy: #617067;
-  --food-plate: #e8f1eb;
-  --food-rim: #e8f1eb;
-  --food-surface: #e8f1eb;
-  --food-spark: #245b43;
-  --auth-bg: #eef3ef;
-  --auth-plate: #e8f1eb;
-  --auth-rim: #e8f1eb;
-  --auth-eyebrow: #245b43;
-  --auth-copy: #617067;
-  --auth-perk: #245b43;
-  --error-bg: #fff0ed;
-  --error-text: #ad4b40;
-  --shadow-button: rgba(28, 73, 53, 0.12);
-  --shadow-small: rgba(0, 0, 0, 0.05);
-  --shadow-mobile: rgba(0, 0, 0, 0.04);
-  --shadow-plate: rgba(25, 55, 45, 0.12);
-  --shadow-dialog: rgba(0, 0, 0, 0.25);
-  --dialog-backdrop: rgba(14, 34, 23, 0.55);
-  --shadow-emoji: rgba(0, 0, 0, 0.07);
-  --brand-overlay-1: rgba(255, 255, 255, 0.025);
-  --brand-overlay-2: rgba(255, 255, 255, 0.07);
-  --brand-overlay-3: rgba(255, 255, 255, 0.1);
-  --brand-overlay-4: rgba(255, 255, 255, 0.15);
-  --brand-overlay-5: rgba(255, 255, 255, 0.22);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 14px;
-  --radius-xl: 16px;
+  --scan-icon-bg: rgba(24, 90, 64, 0.11);
+  --scan-icon: #185a40;
+  --scan-copy: #4c6458;
+  --food-plate: rgba(24, 90, 64, 0.1);
+  --food-rim: rgba(255, 255, 255, 0.7);
+  --food-surface: rgba(24, 90, 64, 0.1);
+  --food-spark: #185a40;
+  --auth-bg: rgba(255, 255, 255, 0.36);
+  --auth-plate: rgba(24, 90, 64, 0.12);
+  --auth-rim: rgba(255, 255, 255, 0.75);
+  --auth-eyebrow: #185a40;
+  --auth-copy: #4c6458;
+  --auth-perk: #185a40;
+
+  /* Border Radius */
+  --radius-xs: 8px;
+  --radius-sm: 11px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+  --radius-2xl: 26px;
+
+  /* Spacing Scale */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -76,51 +157,129 @@
   --space-6: 24px;
   --space-8: 32px;
   --space-10: 40px;
+
+  /* Transitions */
+  --ease-glass: cubic-bezier(0.22, 1, 0.36, 1);
+  --transition-fast: 160ms var(--ease-glass);
+  --transition-base: 240ms var(--ease-glass);
 }
+
 [data-theme="dark"] {
-  --canvas: #121915;
-  --surface: #1c2520;
-  --surface-soft: #25312a;
-  --surface-muted: #334238;
-  --text: #edf3ee;
-  --text-soft: #b2c2b7;
-  --border: #39483d;
-  --brand: #a5d0ae;
-  --brand-hover: #c4e3ca;
-  --brand-soft: #2b4132;
-  --accent: #4d6753;
-  --accent-strong: #a5d0ae;
-  --peach: #25312a;
-  --orange: #a5d0ae;
-  --danger: #fa9a8d;
-  --shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
-  --nav-label: #a3b5a8;
-  --nav-divider: #667a6a;
-  --tip-bg: #25312a;
-  --tip-title: #edf3ee;
-  --tip-copy: #b2c2b7;
-  --hero-start: #1c2520;
-  --hero-mid: #1c2520;
-  --hero-end: #1c2520;
-  --hero-inner: #1c2520;
-  --hero-copy: #b2c2b7;
-  --hero-soft: #b2c2b7;
-  --hero-badge: #a5d0ae;
-  --hero-highlight: #a5d0ae;
-  --hero-button-bg: #a5d0ae;
-  --hero-button-text: #17251b;
-  --scan-icon-bg: #2b4132;
-  --scan-icon: #a5d0ae;
-  --scan-copy: #b2c2b7;
-  --food-plate: #2b4132;
-  --food-rim: #2b4132;
-  --food-surface: #2b4132;
-  --auth-bg: #202c24;
-  --auth-plate: #2b4132;
-  --auth-rim: #2b4132;
-  --auth-eyebrow: #a5d0ae;
-  --auth-copy: #b2c2b7;
-  --auth-perk: #a5d0ae;
-  --error-bg: #4c302e;
-  --error-text: #ffb4a9;
+  color-scheme: dark;
+
+  /* Full-Application Atmospheric Canvas & Background SVG */
+  --canvas: #08100c;
+  --canvas-deep: #050b08;
+  --app-bg-image: var(--app-bg-dark);
+
+  /* Glass Surface System (Dark Mode) */
+  --glass-opacity: 0.56;
+  --glass-opacity-elevated: 0.72;
+  --glass-opacity-subtle: 0.38;
+  --glass-surface: rgba(18, 32, 25, var(--glass-opacity));
+  --glass-surface-elevated: rgba(22, 39, 30, var(--glass-opacity-elevated));
+  --glass-surface-subtle: rgba(24, 43, 33, var(--glass-opacity-subtle));
+  --glass-surface-hover: rgba(28, 50, 38, 0.72);
+  --glass-sidebar: rgba(15, 27, 21, 0.66);
+  --glass-navbar: rgba(14, 25, 19, 0.58);
+  --glass-modal: rgba(16, 29, 22, 0.84);
+  --glass-input: rgba(12, 23, 18, 0.58);
+  --glass-input-focus: rgba(18, 34, 26, 0.86);
+  --glass-dropdown: rgba(16, 30, 23, 0.92);
+
+  /* Legacy surface aliases */
+  --surface: var(--glass-surface);
+  --surface-soft: var(--glass-surface-subtle);
+  --surface-muted: rgba(168, 220, 188, 0.1);
+
+  /* Borders & Specular Liquid Highlights */
+  --glass-border: rgba(210, 245, 224, 0.12);
+  --glass-border-subtle: rgba(210, 245, 224, 0.08);
+  --glass-border-strong: rgba(114, 209, 158, 0.32);
+  --glass-highlight-inset: rgba(255, 255, 255, 0.11);
+  --glass-rim-bottom: rgba(0, 0, 0, 0.45);
+  --border: rgba(205, 240, 220, 0.11);
+
+  /* Text Hierarchy */
+  --text: #ecf5ef;
+  --text-soft: #9cb5a6;
+  --text-muted: #708a7b;
+
+  /* Brand & Accents (Controlled Emerald & Mint Green) */
+  --brand: #6fd49e;
+  --brand-hover: #8be0b2;
+  --brand-soft: rgba(111, 212, 158, 0.14);
+  --brand-glow: rgba(111, 212, 158, 0.22);
+  --accent: rgba(111, 212, 158, 0.24);
+  --accent-strong: #6fd49e;
+  --on-brand: #081c12;
+
+  /* Macronutrient Semantic Accents */
+  --macro-protein: #6fd49e;
+  --macro-carbs: #52b788;
+  --macro-fat: #95d5b2;
+  --peach: rgba(24, 43, 33, 0.52);
+  --orange: #52b788;
+
+  /* Status & Semantic Alerts */
+  --danger: #ff877a;
+  --danger-soft: rgba(255, 135, 122, 0.14);
+  --error-bg: rgba(74, 29, 27, 0.66);
+  --error-text: #ffb4ab;
+
+  /* Layered Depth & Shadows */
+  --glass-shadow-sm:
+    0 6px 18px -4px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 0 var(--glass-highlight-inset);
+  --glass-shadow:
+    0 16px 40px -10px rgba(0, 0, 0, 0.46), 0 4px 12px -2px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 0 var(--glass-highlight-inset);
+  --glass-shadow-lg:
+    0 24px 56px -12px rgba(0, 0, 0, 0.58), 0 6px 18px -4px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 0 var(--glass-highlight-inset);
+  --glass-shadow-sidebar:
+    0 22px 54px -12px rgba(0, 0, 0, 0.62), 0 4px 14px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.13);
+  --glass-shadow-modal:
+    0 36px 90px -16px rgba(0, 0, 0, 0.75), 0 12px 32px -8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+
+  --shadow: var(--glass-shadow);
+  --shadow-button: rgba(111, 212, 158, 0.2);
+  --shadow-small: rgba(0, 0, 0, 0.35);
+  --shadow-mobile: rgba(0, 0, 0, 0.5);
+  --shadow-plate: rgba(0, 0, 0, 0.42);
+  --shadow-dialog: rgba(0, 0, 0, 0.72);
+  --dialog-backdrop: rgba(3, 9, 6, 0.65);
+  --shadow-emoji: rgba(0, 0, 0, 0.3);
+
+  /* Component-Specific Tokens */
+  --nav-label: #7e9989;
+  --nav-divider: rgba(205, 240, 220, 0.18);
+  --tip-bg: rgba(24, 43, 33, 0.48);
+  --tip-title: #ecf5ef;
+  --tip-copy: #9cb5a6;
+  --hero-start: rgba(24, 45, 34, 0.68);
+  --hero-mid: rgba(19, 36, 27, 0.62);
+  --hero-end: rgba(15, 28, 21, 0.56);
+  --hero-inner: rgba(14, 26, 20, 0.88);
+  --hero-copy: #9cb5a6;
+  --hero-soft: #88a393;
+  --hero-badge: #6fd49e;
+  --hero-highlight: #6fd49e;
+  --hero-button-bg: #6fd49e;
+  --hero-button-text: #081c12;
+  --scan-icon-bg: rgba(111, 212, 158, 0.14);
+  --scan-icon: #6fd49e;
+  --scan-copy: #9cb5a6;
+  --food-plate: rgba(111, 212, 158, 0.13);
+  --food-rim: rgba(255, 255, 255, 0.14);
+  --food-surface: rgba(111, 212, 158, 0.13);
+  --food-spark: #6fd49e;
+  --auth-bg: rgba(16, 30, 23, 0.45);
+  --auth-plate: rgba(111, 212, 158, 0.14);
+  --auth-rim: rgba(255, 255, 255, 0.14);
+  --auth-eyebrow: #6fd49e;
+  --auth-copy: #9cb5a6;
+  --auth-perk: #6fd49e;
 }

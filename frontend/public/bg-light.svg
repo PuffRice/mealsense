@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <defs>
+  <radialGradient id="g0" cx="288.0" cy="216.0" r="1056" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="#D9D28B" stop-opacity="1"/>
+    <stop offset="100%" stop-color="#D9D28B" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="g1" cx="1632.0" cy="270.0" r="1056" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="#B2BD7E" stop-opacity="1"/>
+    <stop offset="100%" stop-color="#B2BD7E" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="g2" cx="380.3" cy="705.0" r="1056" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="#8E9162" stop-opacity="1"/>
+    <stop offset="100%" stop-color="#8E9162" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="g3" cx="1615.7" cy="844.6" r="1056" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="#6A795D" stop-opacity="1"/>
+    <stop offset="100%" stop-color="#6A795D" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="soft"><feGaussianBlur stdDeviation="64"/></filter>
+  </defs>
+  <rect width="1920" height="1080" fill="#D9D28B"/>
+  <g filter="url(#soft)"><rect width="1920" height="1080" fill="url(#g0)"/><rect width="1920" height="1080" fill="url(#g1)"/><rect width="1920" height="1080" fill="url(#g2)"/><rect width="1920" height="1080" fill="url(#g3)"/></g>
+</svg>

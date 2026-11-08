@@ -7,7 +7,7 @@ import {
   Sun,
   Trash2,
 } from "lucide-react";
-import { Badge, Button, Card } from "../../design/ui";
+import { Badge, GlassButton, GlassCard } from "../../design/ui";
 import type { User } from "../../lib/types";
 
 export function Settings({
@@ -32,14 +32,14 @@ export function Settings({
       </div>
 
       <div className="settings-clean-grid">
-        <Card className="settings-card">
+        <GlassCard className="settings-card">
           <div className="settings-card__head">
             <span>
-              <Palette size={20} />
+              <Palette size={19} />
             </span>
             <div>
               <h2>Appearance</h2>
-              <p>Choose the visual theme that feels most comfortable.</p>
+              <p>Choose the Liquid Glass theme that feels most comfortable.</p>
             </div>
           </div>
 
@@ -54,11 +54,13 @@ export function Settings({
               }}
             >
               <div className="theme-option__icon">
-                <Sun size={20} />
+                <Sun size={19} />
               </div>
               <div className="theme-option__body">
-                <strong>Light theme</strong>
-                <small>Light surfaces with a green accent</small>
+                <strong>Light Liquid Glass</strong>
+                <small>
+                  Soft atmospheric mint & translucent white surfaces
+                </small>
               </div>
               {!dark && (
                 <Badge tone="green">
@@ -77,11 +79,13 @@ export function Settings({
               }}
             >
               <div className="theme-option__icon">
-                <Moon size={20} />
+                <Moon size={19} />
               </div>
               <div className="theme-option__body">
-                <strong>Dark theme</strong>
-                <small>Dark surfaces with a green accent</small>
+                <strong>Dark Liquid Glass</strong>
+                <small>
+                  Deep forest charcoal & luminous emerald glass surfaces
+                </small>
               </div>
               {dark && (
                 <Badge tone="green">
@@ -90,12 +94,12 @@ export function Settings({
               )}
             </button>
           </div>
-        </Card>
+        </GlassCard>
 
-        <Card className="settings-card">
+        <GlassCard className="settings-card">
           <div className="settings-card__head">
             <span>
-              <ShieldCheck size={20} />
+              <ShieldCheck size={19} />
             </span>
             <div>
               <h2>Delete account & privacy</h2>
@@ -121,17 +125,17 @@ export function Settings({
                 </p>
               </div>
             </div>
-            <Button
+            <GlassButton
               type="button"
               variant="danger"
               size="sm"
-              icon={<Trash2 size={16} />}
+              icon={<Trash2 size={15} />}
               onClick={onDelete}
             >
               Delete my account
-            </Button>
+            </GlassButton>
           </div>
-        </Card>
+        </GlassCard>
       </div>
     </>
   );

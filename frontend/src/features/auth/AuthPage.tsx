@@ -8,7 +8,7 @@ import {
   Leaf,
   ShieldCheck,
 } from "lucide-react";
-import { Button, Field, SelectField } from "../../design/ui";
+import { Field, GlassButton, GlassPanel, SelectField } from "../../design/ui";
 import { FoodArt } from "../../components/FoodArt";
 import { auth } from "../../lib/api";
 import type { Gender, User } from "../../lib/types";
@@ -57,18 +57,20 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
     <div className="auth-layout">
       <div className="auth-panel">
         <div className="brand brand--auth">
-          <img
-            src="/MealSense_Logo.svg"
-            alt="MealSense"
-            className="brand__mark"
-          />
+          <div className="brand__logo-glass">
+            <img
+              src="/MealSense_Logo.svg"
+              alt="MealSense"
+              className="brand__mark"
+            />
+          </div>
           <span>
             Meal<span className="brand__light">Sense</span>
           </span>
         </div>
-        <div className="auth-panel__body">
+        <GlassPanel elevated className="auth-panel__body">
           <span className="eyebrow">
-            <Leaf size={15} /> YOUR WELLNESS JOURNEY
+            <Leaf size={14} /> YOUR WELLNESS JOURNEY
           </span>
           <h1>
             {register
@@ -144,7 +146,7 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 onClick={() => setShowPassword(!showPassword)}
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
             {error && (
@@ -152,10 +154,10 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
                 {error}
               </div>
             )}
-            <Button
+            <GlassButton
               type="submit"
               disabled={busy}
-              icon={<ArrowRight size={18} />}
+              icon={<ArrowRight size={17} />}
               className="auth-form__submit"
             >
               {busy
@@ -163,11 +165,12 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
                 : register
                   ? "Create account"
                   : "Sign in"}
-            </Button>
+            </GlassButton>
           </form>
           <p className="auth-switch">
             {register ? "Already have an account?" : "New to MealSense?"}{" "}
             <button
+              type="button"
               onClick={() => {
                 setRegister(!register);
                 setError("");
@@ -176,14 +179,13 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
               {register ? "Sign in" : "Create an account"}
             </button>
           </p>
-        </div>
+        </GlassPanel>
         <span className="auth-panel__foot">
-          <ShieldCheck size={16} /> Your food diary stays yours.
+          <ShieldCheck size={15} /> Your food diary stays yours.
         </span>
       </div>
       <div className="auth-visual">
-        <div className="auth-visual__halo" />
-        <div className="auth-visual__content">
+        <GlassPanel className="auth-visual__content">
           <div className="auth-visual__label">A FRESH PERSPECTIVE ON FOOD</div>
           <FoodArt variant="plate" />
           <h2>
@@ -197,13 +199,13 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
           </p>
           <div className="auth-visual__perks">
             <span>
-              <Check size={16} /> Simple meal logging
+              <Check size={15} /> Simple meal logging
             </span>
             <span>
-              <Check size={16} /> Clear daily insights
+              <Check size={15} /> Clear daily insights
             </span>
           </div>
-        </div>
+        </GlassPanel>
       </div>
     </div>
   );

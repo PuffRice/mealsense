@@ -7,6 +7,24 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    {
+      name: "watch-public-svg",
+      configureServer(server) {
+        server.watcher.add("public/**/*.svg");
+        const notifySvgChange = (filePath: string) => {
+          if (filePath.endsWith(".svg")) {
+            server.ws.send({
+              type: "custom",
+              event: "public-svg-updated",
+              data: { timestamp: Date.now(), file: filePath },
+            });
+          }
+        };
+        server.watcher.on("change", notifySvgChange);
+        server.watcher.on("add", notifySvgChange);
+        server.watcher.on("unlink", notifySvgChange);
+      },
+    },
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["icon.svg", "MealSense_Logo.svg"],
@@ -36,7 +54,8 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
-        globPatterns: ["**/*.{js,css,html,svg,png}"],
+        globPatterns: ["**/*.{js,css,html,png}"],
+        globIgnores: ["**/bg*.svg"],
         runtimeCaching: [],
       },
     } as any),

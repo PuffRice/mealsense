@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Camera, Check, Plus, Search, Trash2, X } from "lucide-react";
-import { Badge, Button, Field, SelectField } from "../../design/ui";
+import {
+  Badge,
+  Field,
+  GlassButton,
+  GlassModal,
+  SelectField,
+} from "../../design/ui";
 import { foodsApi, mealsApi, uploadMealImage } from "../../lib/api";
 import { loadDraft, removeDraft, saveDraft } from "../../lib/offline";
 import type { Candidate, Food, Meal, MealInput } from "../../lib/types";
@@ -86,7 +92,11 @@ export function MealEditor({
       void saveDraft({ userId, kind, when, notes, entries }).catch(() => {});
   }, [meal, draftReady, userId, kind, when, notes, entries]);
   const filtered = foods
-    .filter((food) => (food.name + " " + (food.name_bn || "")).toLowerCase().includes(query.toLowerCase()))
+    .filter((food) =>
+      (food.name + " " + (food.name_bn || ""))
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    )
     .slice(0, 8);
   const estimate = useMemo(
     () =>
@@ -99,7 +109,12 @@ export function MealEditor({
   function addFood(food: Food, recognitionResultId?: string) {
     setEntries([
       ...entries,
-      { key: crypto.randomUUID(), food_id: food.id, grams: 100, recognition_result_id: recognitionResultId },
+      {
+        key: crypto.randomUUID(),
+        food_id: food.id,
+        grams: 100,
+        recognition_result_id: recognitionResultId,
+      },
     ]);
     setQuery("");
   }
@@ -139,7 +154,13 @@ export function MealEditor({
     setSuggestions([]);
     setPhotoNotice("");
     setPhoto(file);
-    if (file) setEntries((current) => current.map((entry) => ({ ...entry, recognition_result_id: undefined })));
+    if (file)
+      setEntries((current) =>
+        current.map((entry) => ({
+          ...entry,
+          recognition_result_id: undefined,
+        })),
+      );
     if (!file) return;
     if (!navigator.onLine) {
       setError(
@@ -189,7 +210,14 @@ export function MealEditor({
         meal_type: kind,
         notes,
         image_id: imageId,
-        items: entries.map(({ food_id, grams, serving_id, recognition_result_id }) => ({ food_id, grams, serving_id, recognition_result_id })),
+        items: entries.map(
+          ({ food_id, grams, serving_id, recognition_result_id }) => ({
+            food_id,
+            grams,
+            serving_id,
+            recognition_result_id,
+          }),
+        ),
         operation_id: operationId,
       };
       if (meal)
@@ -205,287 +233,292 @@ export function MealEditor({
     }
   }
   return (
-    <div
-      className="modal-backdrop"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="meal-editor-title"
-      >
-        <div className="modal__head">
-          <div>
-            <span className="eyebrow">YOUR FOOD DIARY</span>
-            <h2 id="meal-editor-title">
-              {meal ? "Edit your meal" : "Log a meal"}
-            </h2>
-            <p>Tell us what you ate. You can always update it later.</p>
-          </div>
-          <button className="icon-button" onClick={onClose} aria-label="Close">
-            <X size={20} />
-          </button>
+    <GlassModal titleId="meal-editor-title" onClose={onClose}>
+      <div className="modal__head">
+        <div>
+          <span className="eyebrow">YOUR FOOD DIARY</span>
+          <h2 id="meal-editor-title">
+            {meal ? "Edit your meal" : "Log a meal"}
+          </h2>
+          <p>Tell us what you ate. You can always update it later.</p>
         </div>
-        <form onSubmit={save} className="modal__body">
-          <div className="editor-two">
-            <SelectField
-              label="Meal type"
-              value={kind}
-              onChange={(value) => setKind(value as Meal["meal_type"])}
-            >
-              <option value="breakfast">Breakfast</option>
-              <option value="lunch">Lunch</option>
-              <option value="dinner">Dinner</option>
-              <option value="snack">Snack</option>
-            </SelectField>
-            <Field
-              label="When did you eat? (device time)"
-              type="datetime-local"
-              value={when}
-              onChange={(event) => setWhen(event.target.value)}
-              required
+        <button
+          type="button"
+          className="icon-button"
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <X size={18} />
+        </button>
+      </div>
+      <form onSubmit={save} className="modal__body">
+        <div className="editor-two">
+          <SelectField
+            label="Meal type"
+            value={kind}
+            onChange={(value) => setKind(value as Meal["meal_type"])}
+          >
+            <option value="breakfast">Breakfast</option>
+            <option value="lunch">Lunch</option>
+            <option value="dinner">Dinner</option>
+            <option value="snack">Snack</option>
+          </SelectField>
+          <Field
+            label="When did you eat? (device time)"
+            type="datetime-local"
+            value={when}
+            onChange={(event) => setWhen(event.target.value)}
+            required
+          />
+        </div>
+        <div className="editor-section">
+          <div className="editor-section__heading">
+            <h3>Foods you ate</h3>
+            <Badge tone="neutral">Per 100 g references</Badge>
+          </div>
+          <div className="food-search glass-input-shell">
+            <Search size={17} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search for food to add..."
+              aria-label="Search foods"
             />
           </div>
-          <div className="editor-section">
-            <div className="editor-section__heading">
-              <h3>Foods you ate</h3>
-              <Badge tone="neutral">Per 100 g references</Badge>
-            </div>
-            <div className="food-search">
-              <Search size={18} />
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search for food to add..."
-                aria-label="Search foods"
-              />
-            </div>
-            {query && (
-              <div className="food-results">
-                {filtered.map((food) => (
-                  <button
-                    type="button"
-                    key={food.id}
-                    onClick={() => addFood(food)}
-                  >
-                    <span>
-                      {food.name}
-                      <small>
-                        {food.is_sample ? "Sample estimate" : food.source} ·{" "}
-                        {Math.round(Number(food.kcal_100g))} kcal / 100 g
-                      </small>
-                    </span>
-                    <Plus size={18} />
-                  </button>
-                ))}
-                {filtered.length === 0 && (
-                  <p>No matching food. Add your own below.</p>
-                )}
-              </div>
-            )}
-            {entries.map((entry) => {
-              const food = foods.find((item) => item.id === entry.food_id);
-              return (
-                <div className="editor-item" key={entry.key}>
-                  <div className="editor-item__mark" aria-hidden="true">
-                    •
-                  </div>
-                  <div>
-                    <strong>{food?.name || "Unknown food"}</strong>
+          {query && (
+            <div className="food-results">
+              {filtered.map((food) => (
+                <button
+                  type="button"
+                  key={food.id}
+                  onClick={() => addFood(food)}
+                >
+                  <span>
+                    {food.name}
                     <small>
-                      {food?.source || "Reference"} · ~
-                      {Math.round(
-                        (Number(food?.kcal_100g || 0) * entry.grams) / 100,
-                      )}{" "}
-                      kcal
+                      {food.is_sample ? "Sample estimate" : food.source} ·{" "}
+                      {Math.round(Number(food.kcal_100g))} kcal / 100 g
                     </small>
-                    {!!food?.servings?.length && (
-                      <select
-                        className="editor-item__serving"
-                        aria-label={`Serving for ${food.name}`}
-                        value={entry.serving_id || ""}
-                        onChange={(event) => {
-                          const serving = food.servings?.find((option) => option.id === Number(event.target.value));
-                          setEntries(entries.map((item) => item.key === entry.key
-                            ? { ...item, serving_id: serving?.id, grams: serving ? Number(serving.weight_g) : item.grams }
-                            : item));
-                        }}
-                      >
-                        <option value="">Custom weight in grams</option>
-                        {food.servings.map((serving) => (
-                          <option key={serving.id} value={serving.id}>
-                            {serving.name} · {serving.weight_g} g{serving.is_approximate ? " approx." : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <div className="editor-item__amount">
-                    <input
-                      type="number"
-                      min="1"
-                      max="10000"
-                      value={entry.grams}
-                      onChange={(event) =>
+                  </span>
+                  <Plus size={17} />
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p>No matching food. Add your own below.</p>
+              )}
+            </div>
+          )}
+          {entries.map((entry) => {
+            const food = foods.find((item) => item.id === entry.food_id);
+            return (
+              <div className="editor-item" key={entry.key}>
+                <div className="editor-item__mark" aria-hidden="true">
+                  •
+                </div>
+                <div>
+                  <strong>{food?.name || "Unknown food"}</strong>
+                  <small>
+                    {food?.source || "Reference"} · ~
+                    {Math.round(
+                      (Number(food?.kcal_100g || 0) * entry.grams) / 100,
+                    )}{" "}
+                    kcal
+                  </small>
+                  {!!food?.servings?.length && (
+                    <select
+                      className="editor-item__serving"
+                      aria-label={`Serving for ${food.name}`}
+                      value={entry.serving_id || ""}
+                      onChange={(event) => {
+                        const serving = food.servings?.find(
+                          (option) => option.id === Number(event.target.value),
+                        );
                         setEntries(
                           entries.map((item) =>
                             item.key === entry.key
-                              ? { ...item, grams: Number(event.target.value), serving_id: undefined }
+                              ? {
+                                  ...item,
+                                  serving_id: serving?.id,
+                                  grams: serving
+                                    ? Number(serving.weight_g)
+                                    : item.grams,
+                                }
                               : item,
                           ),
-                        )
-                      }
-                      aria-label={`Grams of ${food?.name}`}
-                    />
-                    <span>g</span>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${food?.name}`}
-                    onClick={() =>
+                        );
+                      }}
+                    >
+                      <option value="">Custom weight in grams</option>
+                      {food.servings.map((serving) => (
+                        <option key={serving.id} value={serving.id}>
+                          {serving.name} · {serving.weight_g} g
+                          {serving.is_approximate ? " approx." : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <div className="editor-item__amount">
+                  <input
+                    type="number"
+                    min="1"
+                    max="10000"
+                    value={entry.grams}
+                    onChange={(event) =>
                       setEntries(
-                        entries.filter((item) => item.key !== entry.key),
+                        entries.map((item) =>
+                          item.key === entry.key
+                            ? {
+                                ...item,
+                                grams: Number(event.target.value),
+                                serving_id: undefined,
+                              }
+                            : item,
+                        ),
                       )
                     }
-                  >
-                    <Trash2 size={17} />
-                  </button>
+                    aria-label={`Grams of ${food?.name}`}
+                  />
+                  <span>g</span>
                 </div>
-              );
-            })}
-            <button
-              type="button"
-              className="text-action"
-              onClick={() => setCustom(!custom)}
-            >
-              <Plus size={17} />{" "}
-              {custom ? "Hide custom food" : "Add a food not listed"}
-            </button>
-            {custom && (
-              <div className="custom-food">
-                <Field
-                  label="Food name"
-                  value={customName}
-                  onChange={(event) => setCustomName(event.target.value)}
-                  placeholder="e.g. Homemade dal"
-                />
-                <div className="custom-food__grid">
-                  <Field
-                    label="Calories / 100 g"
-                    type="number"
-                    min="0"
-                    value={customKcal}
-                    onChange={(event) => setCustomKcal(event.target.value)}
-                  />
-                  <Field
-                    label="Protein / 100 g"
-                    type="number"
-                    min="0"
-                    value={customProtein}
-                    onChange={(event) => setCustomProtein(event.target.value)}
-                  />
-                  <Field
-                    label="Carbs / 100 g"
-                    type="number"
-                    min="0"
-                    value={customCarbs}
-                    onChange={(event) => setCustomCarbs(event.target.value)}
-                  />
-                  <Field
-                    label="Fat / 100 g"
-                    type="number"
-                    min="0"
-                    value={customFat}
-                    onChange={(event) => setCustomFat(event.target.value)}
-                  />
-                </div>
-                <p>
-                  Use values from a label or trusted reference. These values are
-                  supplied by you.
-                </p>
-                <Button
+                <button
                   type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={createFood}
+                  aria-label={`Remove ${food?.name}`}
+                  onClick={() =>
+                    setEntries(entries.filter((item) => item.key !== entry.key))
+                  }
                 >
-                  Save custom food
-                </Button>
+                  <Trash2 size={16} />
+                </button>
               </div>
-            )}
-          </div>
-          <div className="editor-section">
-            <h3>Photo (optional)</h3>
-            <label className="photo-upload">
-              <Camera size={20} />
-              <span>{photo ? photo.name : "Choose a meal photo"}</span>
-              <small>JPEG, PNG or WebP · up to 8 MB</small>
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={(event) =>
-                  void pickPhoto(event.target.files?.[0] ?? null)
-                }
+            );
+          })}
+          <button
+            type="button"
+            className="text-action"
+            onClick={() => setCustom(!custom)}
+          >
+            <Plus size={16} />{" "}
+            {custom ? "Hide custom food" : "Add a food not listed"}
+          </button>
+          {custom && (
+            <div className="custom-food">
+              <Field
+                label="Food name"
+                value={customName}
+                onChange={(event) => setCustomName(event.target.value)}
+                placeholder="e.g. Homemade dal"
               />
-            </label>
-            <p className="editor-note">
-              Your photo is analyzed only to suggest foods. Suggestions are
-              approximate; you pick the food and serving size yourself. Text
-              drafts save locally; photos do not.
-            </p>
-            {suggestions.length > 0 && (
-              <div
-                className="suggestion-row"
-                aria-label="Food suggestions from your photo"
-              >
-                <span className="suggestion-row__label">
-                  Seen in your photo?
-                </span>
-                {suggestions.map((item) => (
-                  <button
-                    type="button"
-                    key={item.name}
-                    className="suggestion-chip"
-                    onClick={() => applySuggestion(item)}
-                  >
-                    {item.name}
-                    {item.category && <small>{item.category}</small>}
-                  </button>
-                ))}
+              <div className="custom-food__grid">
+                <Field
+                  label="Calories / 100 g"
+                  type="number"
+                  min="0"
+                  value={customKcal}
+                  onChange={(event) => setCustomKcal(event.target.value)}
+                />
+                <Field
+                  label="Protein / 100 g"
+                  type="number"
+                  min="0"
+                  value={customProtein}
+                  onChange={(event) => setCustomProtein(event.target.value)}
+                />
+                <Field
+                  label="Carbs / 100 g"
+                  type="number"
+                  min="0"
+                  value={customCarbs}
+                  onChange={(event) => setCustomCarbs(event.target.value)}
+                />
+                <Field
+                  label="Fat / 100 g"
+                  type="number"
+                  min="0"
+                  value={customFat}
+                  onChange={(event) => setCustomFat(event.target.value)}
+                />
               </div>
-            )}
-            {photoNotice && <p className="editor-note">{photoNotice}</p>}
-          </div>
-          <label className="field">
-            <span className="field__label">Notes (optional)</span>
-            <textarea
-              className="field__input"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Anything you want to remember?"
-              rows={2}
-            />
-          </label>
-          {error && (
-            <div className="form-error" role="alert">
-              {error}
+              <p>
+                Use values from a label or trusted reference. These values are
+                supplied by you.
+              </p>
+              <GlassButton
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={busy}
+                onClick={createFood}
+              >
+                Save custom food
+              </GlassButton>
             </div>
           )}
-          <div className="modal__foot">
-            <span>
-              Estimated total <strong>~{Math.round(estimate)} kcal</strong>
-            </span>
-            <Button type="submit" disabled={busy} icon={<Check size={18} />}>
-              {busy ? "Saving..." : meal ? "Save changes" : "Save meal"}
-            </Button>
+        </div>
+        <div className="editor-section">
+          <h3>Photo (optional)</h3>
+          <label className="photo-upload">
+            <Camera size={19} />
+            <span>{photo ? photo.name : "Choose a meal photo"}</span>
+            <small>JPEG, PNG or WebP · up to 8 MB</small>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(event) =>
+                void pickPhoto(event.target.files?.[0] ?? null)
+              }
+            />
+          </label>
+          <p className="editor-note">
+            Your photo is analyzed only to suggest foods. Suggestions are
+            approximate; you pick the food and serving size yourself. Text
+            drafts save locally; photos do not.
+          </p>
+          {suggestions.length > 0 && (
+            <div
+              className="suggestion-row"
+              aria-label="Food suggestions from your photo"
+            >
+              <span className="suggestion-row__label">Seen in your photo?</span>
+              {suggestions.map((item) => (
+                <button
+                  type="button"
+                  key={item.name}
+                  className="suggestion-chip"
+                  onClick={() => applySuggestion(item)}
+                >
+                  {item.name}
+                  {item.category && <small>{item.category}</small>}
+                </button>
+              ))}
+            </div>
+          )}
+          {photoNotice && <p className="editor-note">{photoNotice}</p>}
+        </div>
+        <label className="field">
+          <span className="field__label">Notes (optional)</span>
+          <textarea
+            className="field__input glass-input"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Anything you want to remember?"
+            rows={2}
+          />
+        </label>
+        {error && (
+          <div className="form-error" role="alert">
+            {error}
           </div>
-        </form>
-      </div>
-    </div>
+        )}
+        <div className="modal__foot">
+          <span>
+            Estimated total <strong>~{Math.round(estimate)} kcal</strong>
+          </span>
+          <GlassButton type="submit" disabled={busy} icon={<Check size={17} />}>
+            {busy ? "Saving..." : meal ? "Save changes" : "Save meal"}
+          </GlassButton>
+        </div>
+      </form>
+    </GlassModal>
   );
 }

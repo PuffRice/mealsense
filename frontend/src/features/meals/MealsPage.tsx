@@ -7,7 +7,7 @@ import {
   Trash2,
   Utensils,
 } from "lucide-react";
-import { Badge, Button, Card, EmptyState } from "../../design/ui";
+import { Badge, EmptyState, GlassButton, GlassCard } from "../../design/ui";
 import { FoodArt } from "../../components/FoodArt";
 import type { Meal } from "../../lib/types";
 
@@ -41,14 +41,14 @@ export function MealsPage({
           <h1>My meals</h1>
           <p>A record of what you've eaten, one meal at a time.</p>
         </div>
-        <Button icon={<Plus size={18} />} onClick={onAdd}>
+        <GlassButton icon={<Plus size={17} />} onClick={onAdd}>
           Log a meal
-        </Button>
+        </GlassButton>
       </div>
-      <Card className="list-card">
+      <GlassCard className="list-card">
         <div className="list-toolbar">
-          <div className="food-search">
-            <Search size={18} />
+          <div className="food-search glass-input-shell">
+            <Search size={17} />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -64,6 +64,7 @@ export function MealsPage({
             {["all", "breakfast", "lunch", "dinner", "snack"].map((value) => (
               <button
                 key={value}
+                type="button"
                 className={filter === value ? "filter-tabs__active" : ""}
                 onClick={() => setFilter(value)}
               >
@@ -88,9 +89,9 @@ export function MealsPage({
                 />
                 <div className="meal-list__detail">
                   <div>
-                    <Badge tone="neutral">{meal.meal_type}</Badge>
+                    <Badge tone="green">{meal.meal_type}</Badge>
                     <span className="meal-list__date">
-                      <CalendarDays size={14} />
+                      <CalendarDays size={13} />
                       {new Date(meal.eaten_at).toLocaleString([], {
                         dateStyle: "medium",
                         timeStyle: "short",
@@ -106,7 +107,9 @@ export function MealsPage({
                       )
                       .join(" · ")}
                   </p>
-                  {meal.notes && <p>{meal.notes}</p>}
+                  {meal.notes && (
+                    <p className="meal-list__note">{meal.notes}</p>
+                  )}
                 </div>
                 <div className="meal-list__right">
                   <strong>
@@ -118,14 +121,22 @@ export function MealsPage({
                     {Math.round(Number(meal.totals.fat_g))}g
                   </span>
                   <div>
-                    <button onClick={() => onEdit(meal)} aria-label="Edit meal">
-                      <Pencil size={17} />
+                    <button
+                      type="button"
+                      onClick={() => onEdit(meal)}
+                      aria-label="Edit meal"
+                      title="Edit meal"
+                    >
+                      <Pencil size={16} />
                     </button>
                     <button
+                      type="button"
+                      className="meal-list__delete"
                       onClick={() => onDelete(meal)}
                       aria-label="Delete meal"
+                      title="Delete meal"
                     >
-                      <Trash2 size={17} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
@@ -134,7 +145,7 @@ export function MealsPage({
           </div>
         ) : (
           <EmptyState
-            icon={<Utensils size={26} />}
+            icon={<Utensils size={24} />}
             title={
               meals.length ? "No matching meals" : "Your diary starts here"
             }
@@ -145,14 +156,18 @@ export function MealsPage({
             }
             action={
               !meals.length && (
-                <Button size="sm" icon={<Plus size={16} />} onClick={onAdd}>
+                <GlassButton
+                  size="sm"
+                  icon={<Plus size={15} />}
+                  onClick={onAdd}
+                >
                   Log a meal
-                </Button>
+                </GlassButton>
               )
             }
           />
         )}
-      </Card>
+      </GlassCard>
     </>
   );
 }

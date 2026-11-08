@@ -13,7 +13,13 @@ export type MealDraft = {
   kind: Meal["meal_type"];
   when: string;
   notes: string;
-  entries: { key: string; food_id: string; grams: number; serving_id?: number; recognition_result_id?: string }[];
+  entries: {
+    key: string;
+    food_id: string;
+    grams: number;
+    serving_id?: number;
+    recognition_result_id?: string;
+  }[];
 };
 
 function database(): Promise<IDBDatabase> {

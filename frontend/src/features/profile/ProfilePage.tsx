@@ -7,7 +7,13 @@ import {
   Target,
   UserRound,
 } from "lucide-react";
-import { Badge, Button, Card, Field, SelectField } from "../../design/ui";
+import {
+  Badge,
+  Field,
+  GlassButton,
+  GlassCard,
+  SelectField,
+} from "../../design/ui";
 import { auth } from "../../lib/api";
 import type { Gender, User } from "../../lib/types";
 import {
@@ -120,10 +126,10 @@ export function ProfilePage({
       </div>
 
       <div className="profile-grid">
-        <Card className="settings-card">
+        <GlassCard className="settings-card">
           <div className="settings-card__head">
             <span>
-              <UserRound size={20} />
+              <UserRound size={19} />
             </span>
             <div>
               <h2>Personal profile & targets</h2>
@@ -164,7 +170,7 @@ export function ProfilePage({
 
             <div className="age-box" aria-live="polite">
               <div className="age-box__head">
-                <Calendar size={16} />
+                <Calendar size={15} />
                 <span>Exact age from date of birth</span>
               </div>
               {exactAge ? (
@@ -249,17 +255,21 @@ export function ProfilePage({
                 {message}
               </p>
             )}
-            <Button type="submit" disabled={saving} icon={<Check size={17} />}>
+            <GlassButton
+              type="submit"
+              disabled={saving}
+              icon={<Check size={16} />}
+            >
               {saving ? "Saving..." : "Save profile & goals"}
-            </Button>
+            </GlassButton>
           </form>
-        </Card>
+        </GlassCard>
 
         <div className="settings-side">
-          <Card className="settings-card">
+          <GlassCard className="settings-card">
             <div className="settings-card__head">
               <span>
-                <Activity size={20} />
+                <Activity size={19} />
               </span>
               <div>
                 <h2>BMI calculator</h2>
@@ -330,12 +340,12 @@ export function ProfilePage({
                 calculate BMI.
               </p>
             )}
-          </Card>
+          </GlassCard>
 
-          <Card className="settings-card suggestion-card">
+          <GlassCard className="settings-card suggestion-card">
             <div className="settings-card__head">
               <span>
-                <Sparkles size={20} />
+                <Sparkles size={19} />
               </span>
               <div>
                 <h2>Suggested daily nutrition</h2>
@@ -379,7 +389,7 @@ export function ProfilePage({
                   {gender ? `, and gender (${gender})` : ""}. General estimate
                   only — not medical advice.
                 </p>
-                <Button
+                <GlassButton
                   type="button"
                   variant="secondary"
                   size="sm"
@@ -387,7 +397,7 @@ export function ProfilePage({
                   onClick={applySuggestions}
                 >
                   Apply suggested targets
-                </Button>
+                </GlassButton>
               </div>
             ) : (
               <p className="settings-card__disclaimer">
@@ -395,7 +405,7 @@ export function ProfilePage({
                 see personalized calorie, protein, carb, and fat suggestions.
               </p>
             )}
-          </Card>
+          </GlassCard>
         </div>
       </div>
     </>

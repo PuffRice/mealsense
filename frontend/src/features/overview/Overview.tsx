@@ -1,5 +1,18 @@
-import { ArrowRight, Camera, Flame, Plus, Utensils } from "lucide-react";
-import { Badge, Button, Card, EmptyState, Progress } from "../../design/ui";
+import {
+  ArrowRight,
+  Camera,
+  Flame,
+  Plus,
+  Sparkles,
+  Utensils,
+} from "lucide-react";
+import {
+  Badge,
+  EmptyState,
+  GlassButton,
+  GlassCard,
+  Progress,
+} from "../../design/ui";
 import { FoodArt } from "../../components/FoodArt";
 import type { Daily, Meal, User } from "../../lib/types";
 
@@ -18,21 +31,27 @@ function MacroCard({
   tone: "brand" | "lime" | "orange";
   detail: string;
 }) {
+  const pct = goal > 0 ? Math.min(100, Math.round((value / goal) * 100)) : null;
+
   return (
-    <Card className="macro-card">
+    <GlassCard interactive className="macro-card">
       <div className="macro-card__top">
-        <span className={`macro-card__dot macro-card__dot--${tone}`} />
-        <span>{label}</span>
+        <div className="macro-card__title">
+          <span className={`macro-card__dot macro-card__dot--${tone}`} />
+          <span>{label}</span>
+        </div>
+        {pct !== null && <span className="macro-card__pct">{pct}%</span>}
       </div>
       <div className="macro-card__value">
         {Math.round(value)}
         <small>{goal ? ` / ${goal} ${unit}` : ` ${unit} · no goal set`}</small>
       </div>
-      {goal > 0 && <Progress value={value} max={goal} color={tone} />}
+      <Progress value={value} max={goal > 0 ? goal : 100} color={tone} />
       <p>{detail}</p>
-    </Card>
+    </GlassCard>
   );
 }
+
 function MealRow({ meal, timezone }: { meal: Meal; timezone: string }) {
   const variant =
     meal.meal_type === "breakfast"
@@ -61,6 +80,7 @@ function MealRow({ meal, timezone }: { meal: Meal; timezone: string }) {
     </div>
   );
 }
+
 export function Overview({
   user,
   daily,
@@ -97,18 +117,23 @@ export function Overview({
   const kcal = Number(daily?.totals.kcal || 0),
     goal = user.profile.daily_kcal_goal;
   const pct = goal ? Math.min(100, Math.round((kcal / goal) * 100)) : 0;
+  const remaining = goal ? Math.max(0, Math.round(goal - kcal)) : null;
+
   return (
     <>
       <div className="page-heading">
         <div>
-          <span className="eyebrow">YOUR DAILY DASHBOARD</span>
+          <span className="eyebrow">
+            <Sparkles size={13} /> YOUR DAILY DASHBOARD
+          </span>
           <h1>Hello, {user.display_name?.split(" ")[0] || "friend"}</h1>
           <p>Review your meals and nutrition for today.</p>
         </div>
-        <div className="date-pill">{today}</div>
+        <div className="date-pill glass-panel glass-panel--subtle">{today}</div>
       </div>
+
       <div className="overview-grid">
-        <Card className="hero-card">
+        <GlassCard elevated className="hero-card">
           <div className="hero-card__copy">
             <Badge tone="green">TODAY'S SUMMARY</Badge>
             <h2>Calories logged today</h2>
@@ -116,13 +141,27 @@ export function Overview({
               Estimated from the meals you saved. Add a meal to update your
               total.
             </p>
-            <Button
-              variant="secondary"
-              icon={<Plus size={18} />}
+            <div className="hero-card__metrics">
+              <div className="hero-metric">
+                <span>Logged</span>
+                <strong>{Math.round(kcal)} kcal</strong>
+              </div>
+              <div className="hero-metric">
+                <span>{remaining !== null ? "Remaining" : "Meals today"}</span>
+                <strong>
+                  {remaining !== null
+                    ? `${remaining} kcal`
+                    : `${todayMeals.length}`}
+                </strong>
+              </div>
+            </div>
+            <GlassButton
+              variant="primary"
+              icon={<Plus size={17} />}
               onClick={onAdd}
             >
               Add a meal
-            </Button>
+            </GlassButton>
           </div>
           <div className="hero-card__visual">
             <div
@@ -130,7 +169,7 @@ export function Overview({
               style={{ "--ring": `${pct}%` } as React.CSSProperties}
             >
               <div>
-                <Flame size={25} />
+                <Flame size={22} />
                 <strong>{Math.round(kcal)}</strong>
                 <small>{goal ? `of ${goal} kcal` : "kcal logged"}</small>
               </div>
@@ -139,22 +178,27 @@ export function Overview({
               {goal ? `${pct}% of daily goal` : "Set a goal in Settings"}
             </span>
           </div>
-        </Card>
-        <Card className="scan-card">
-          <div className="scan-card__icon">
-            <Camera size={25} />
+        </GlassCard>
+
+        <GlassCard interactive className="scan-card">
+          <div className="scan-card__top">
+            <div className="scan-card__icon">
+              <Camera size={22} />
+            </div>
+            <Badge tone="neutral">AI & Manual</Badge>
           </div>
           <h3>What did you eat?</h3>
           <p>Upload a photo or add foods by hand. You're always in control.</p>
-          <Button
+          <GlassButton
             variant="secondary"
             onClick={onAdd}
-            icon={<ArrowRight size={17} />}
+            icon={<ArrowRight size={16} />}
           >
             Log your meal
-          </Button>
-        </Card>
+          </GlassButton>
+        </GlassCard>
       </div>
+
       <div className="section-title">
         <div>
           <h2>Today's nutrition</h2>
@@ -164,6 +208,7 @@ export function Overview({
           Estimates, not medical advice
         </span>
       </div>
+
       <div className="macro-grid">
         <MacroCard
           label="Protein"
@@ -190,19 +235,20 @@ export function Overview({
           detail="Part of a balanced diet"
         />
       </div>
+
       <div className="lower-grid">
-        <Card className="recent-card">
+        <GlassCard className="recent-card">
           <div className="card-heading">
             <div>
               <h2>Recent meals</h2>
               <p>Your food diary for today</p>
             </div>
-            <button onClick={onMeals}>
-              View all <ArrowRight size={16} />
+            <button type="button" onClick={onMeals}>
+              View all <ArrowRight size={15} />
             </button>
           </div>
           {todayMeals.length ? (
-            <div>
+            <div className="meal-row-list">
               {todayMeals.slice(0, 3).map((meal) => (
                 <MealRow
                   key={meal.id}
@@ -213,25 +259,30 @@ export function Overview({
             </div>
           ) : (
             <EmptyState
-              icon={<Utensils size={25} />}
+              icon={<Utensils size={23} />}
               title="No meals logged yet"
               text="Start with your first meal and see your day take shape."
               action={
-                <Button size="sm" onClick={onAdd} icon={<Plus size={16} />}>
+                <GlassButton
+                  size="sm"
+                  onClick={onAdd}
+                  icon={<Plus size={15} />}
+                >
                   Add a meal
-                </Button>
+                </GlassButton>
               }
             />
           )}
-        </Card>
-        <Card className="week-card">
+        </GlassCard>
+
+        <GlassCard className="week-card">
           <div className="card-heading">
             <div>
               <h2>Your week at a glance</h2>
               <p>Calories logged each day</p>
             </div>
-            <button onClick={onInsights}>
-              Insights <ArrowRight size={16} />
+            <button type="button" onClick={onInsights}>
+              Insights <ArrowRight size={15} />
             </button>
           </div>
           <div className="week-bars">
@@ -242,20 +293,24 @@ export function Overview({
                   500,
                   ...weekly.map((value) => Number(value.totals.kcal)),
                 );
-              const height = Number(day.totals.kcal)
-                ? Math.max(
-                    8,
-                    Math.min(100, (Number(day.totals.kcal) / scale) * 100),
-                  )
+              const dayKcal = Math.round(Number(day.totals.kcal));
+              const height = dayKcal
+                ? Math.max(8, Math.min(100, (dayKcal / scale) * 100))
                 : 0;
+              const isToday = day.date === daily?.date;
               return (
-                <div className="week-bars__col" key={day.date}>
+                <div
+                  className={`week-bars__col ${isToday ? "week-bars__col--today" : ""}`}
+                  key={day.date}
+                  title={`${day.date}: ${dayKcal} kcal`}
+                >
+                  <span className="week-bars__val">
+                    {dayKcal ? dayKcal : "—"}
+                  </span>
                   <div className="week-bars__track">
                     <span
                       style={{ height: `${height}%` }}
-                      className={
-                        day.date === daily?.date ? "week-bars__today" : ""
-                      }
+                      className={isToday ? "week-bars__today" : ""}
                     />
                   </div>
                   <small>
@@ -268,7 +323,7 @@ export function Overview({
               );
             })}
           </div>
-        </Card>
+        </GlassCard>
       </div>
     </>
   );

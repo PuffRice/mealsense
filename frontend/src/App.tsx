@@ -35,6 +35,7 @@ export default function App() {
   const [dark, setDark] = useState(
     () => localStorage.getItem("mealsense-theme") === "dark",
   );
+  const [bgVersion, setBgVersion] = useState(() => Date.now());
   const [online, setOnline] = useState(navigator.onLine);
   const [dataError, setDataError] = useState("");
   const [lastSynced, setLastSynced] = useState("");
@@ -42,6 +43,28 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("mealsense-theme", dark ? "dark" : "light");
   }, [dark]);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty(
+      "--app-bg-light",
+      `url("/bg-light.svg?v=${bgVersion}"), url("/bg.svg?v=${bgVersion}")`,
+    );
+    root.style.setProperty(
+      "--app-bg-dark",
+      `url("/bg-dark.svg?v=${bgVersion}"), url("/bg.svg?v=${bgVersion}")`,
+    );
+  }, [bgVersion]);
+  useEffect(() => {
+    if (import.meta.hot) {
+      const handleSvgUpdate = (payload: { timestamp?: number }) => {
+        setBgVersion(payload?.timestamp || Date.now());
+      };
+      import.meta.hot.on("public-svg-updated", handleSvgUpdate);
+      return () => {
+        import.meta.hot?.off("public-svg-updated", handleSvgUpdate);
+      };
+    }
+  }, []);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("online", update);
@@ -174,12 +197,16 @@ export default function App() {
     return (
       <div className="boot-screen">
         <div className="brand">
-          <img
-            src="/MealSense_Logo.svg"
-            alt="MealSense"
-            className="brand__mark"
-          />
-          <span>MealSense</span>
+          <div className="brand__logo-glass">
+            <img
+              src="/MealSense_Logo.svg"
+              alt="MealSense"
+              className="brand__mark"
+            />
+          </div>
+          <span>
+            Meal<span className="brand__light">Sense</span>
+          </span>
         </div>
         <p>Preparing your space...</p>
       </div>
