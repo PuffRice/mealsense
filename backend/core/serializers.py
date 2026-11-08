@@ -8,9 +8,18 @@ VALID_GENDERS = ('', 'male', 'female', 'other')
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    profile_picture = serializers.ImageField(
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    profile_picture_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Profile
         fields = [
+            'profile_picture_url',
+            'profile_picture',
             'timezone',
             'units',
             'gender',
@@ -22,6 +31,14 @@ class ProfileSerializer(serializers.ModelSerializer):
             'carbs_goal_g',
             'fat_goal_g',
         ]
+        read_only_fields = ['profile_picture_url']
+
+    def get_profile_picture_url(self, instance):
+        if not instance.profile_picture:
+            return None
+        request = self.context.get('request')
+        path = '/api/v1/users/me/profile-picture/'
+        return request.build_absolute_uri(path) if request else path
 
     def validate_gender(self, value):
         normalized = str(value or '').strip().lower()

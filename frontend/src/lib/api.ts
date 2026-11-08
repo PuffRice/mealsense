@@ -41,10 +41,10 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 export const auth = {
   me: () => api<User>("/users/me/"),
-  login: async (email: string, password: string) => {
+  login: async (identifier: string, password: string) => {
     const user = await api<User>("/auth/login/", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ identifier, password }),
     });
     await initCsrf();
     return user;
@@ -52,6 +52,7 @@ export const auth = {
   register: async (
     email: string,
     password: string,
+    username: string,
     display_name: string,
     timezone: string,
     gender = "",
@@ -62,6 +63,7 @@ export const auth = {
       body: JSON.stringify({
         email,
         password,
+        username,
         display_name,
         timezone,
         gender,
@@ -74,6 +76,16 @@ export const auth = {
   logout: () => api<void>("/auth/logout/", { method: "POST" }),
   update: (data: Partial<User>) =>
     api<User>("/users/me/", { method: "PATCH", body: JSON.stringify(data) }),
+  uploadPicture: (picture: File) => {
+    const body = new FormData();
+    body.append("profile_picture", picture);
+    return api<User>("/users/me/profile-picture/", {
+      method: "POST",
+      body,
+    });
+  },
+  removePicture: () =>
+    api<User>("/users/me/profile-picture/", { method: "DELETE" }),
   remove: (password: string) =>
     api<void>("/users/me/", {
       method: "DELETE",

@@ -127,7 +127,15 @@ export function Layout({
             title="Open Profile & goals"
           >
             <div className="avatar">
-              {(user.display_name || user.email)[0].toUpperCase()}
+              {user.profile.profile_picture_url ? (
+                <img
+                  src={user.profile.profile_picture_url}
+                  alt=""
+                  className="avatar__image"
+                />
+              ) : (
+                (user.display_name || user.email)[0].toUpperCase()
+              )}
             </div>
             <div className="sidebar__user-info">
               <strong>{user.display_name || "Your account"}</strong>

@@ -38,6 +38,34 @@ class MealApiTests(TestCase):
         return {'eaten_at': timezone.now().isoformat(), 'meal_type': 'lunch',
                 'items': [{'food_id': str(self.food.id), 'grams': 150}], **extra}
 
+    def test_profile_picture_upload_is_private_and_limited_to_five_megabytes(self):
+        image_bytes = BytesIO()
+        Image.new('RGB', (2, 2), 'red').save(image_bytes, format='PNG')
+        image = SimpleUploadedFile('profile.png', image_bytes.getvalue(), content_type='image/png')
+        response = self.client.post(
+            '/api/v1/users/me/profile-picture/',
+            {'profile_picture': image},
+            HTTP_X_CSRFTOKEN=self.csrf,
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()['profile']['profile_picture_url'])
+        self.assertEqual(
+            self.client.get('/api/v1/users/me/profile-picture/').status_code,
+            200,
+        )
+
+        oversized = SimpleUploadedFile(
+            'oversized.png',
+            b'0' * (5 * 1024 * 1024 + 1),
+            content_type='image/png',
+        )
+        rejected = self.client.post(
+            '/api/v1/users/me/profile-picture/',
+            {'profile_picture': oversized},
+            HTTP_X_CSRFTOKEN=self.csrf,
+        )
+        self.assertEqual(rejected.status_code, 400)
+
     def test_server_calculates_snapshot_totals_and_idempotent_retry(self):
         operation_id = str(uuid4())
         payload = self.payload(operation_id=operation_id, totals={'kcal': 99999})

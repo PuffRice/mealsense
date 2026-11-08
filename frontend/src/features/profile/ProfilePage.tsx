@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Activity,
   Calendar,
@@ -49,6 +49,8 @@ export function ProfilePage({
   const [fat, setFat] = useState(user.profile.fat_goal_g);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [pictureUploading, setPictureUploading] = useState(false);
+  const pictureInput = useRef<HTMLInputElement>(null);
   const [todayIso] = useState(getTodayIso);
 
   const exactAge = calculateExactAge(dob);
@@ -106,6 +108,29 @@ export function ProfilePage({
     } finally {
       setSaving(false);
     }
+
+  }
+
+  async function uploadPicture(event: React.ChangeEvent<HTMLInputElement>) {
+    const picture = event.target.files?.[0];
+    event.target.value = "";
+    if (!picture) return;
+    if (picture.size > 5 * 1024 * 1024) {
+      setMessage("Profile picture must be 5 MB or smaller.");
+      return;
+    }
+    setPictureUploading(true);
+    setMessage("");
+    try {
+      onUpdate(await auth.uploadPicture(picture));
+      setMessage("Profile picture updated.");
+    } catch (cause) {
+      setMessage(
+        cause instanceof Error ? cause.message : "Could not upload profile picture.",
+      );
+    } finally {
+      setPictureUploading(false);
+    }
   }
 
   const bmiMarkerPercent = suggestion
@@ -138,6 +163,44 @@ export function ProfilePage({
           </div>
 
           <form onSubmit={save}>
+            <div className="settings-card__fields">
+              <div className="profile-picture-field">
+                <div className="avatar avatar--profile">
+                  {user.profile.profile_picture_url ? (
+                    <img
+                      src={user.profile.profile_picture_url}
+                      alt=""
+                      className="avatar__image"
+                    />
+                  ) : (
+                    (user.display_name || user.email)[0].toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <strong>Profile picture</strong>
+                  <p className="settings-card__disclaimer">
+                    JPG, PNG, or WebP up to 5 MB.
+                  </p>
+                  <input
+                    ref={pictureInput}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={uploadPicture}
+                    hidden
+                  />
+                  <GlassButton
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={pictureUploading}
+                    onClick={() => pictureInput.current?.click()}
+                  >
+                    {pictureUploading ? "Uploading..." : "Choose picture"}
+                  </GlassButton>
+                </div>
+              </div>
+            </div>
+
             <div className="settings-card__fields">
               <Field
                 label="Display name"

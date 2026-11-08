@@ -412,6 +412,9 @@ def delete_private_image(user, image_id):
 def delete_user_with_media(user):
     for storage_key in FoodImage.objects.filter(user=user).values_list('file', flat=True):
         queue_media_deletion(storage_key)
+    profile = getattr(user, 'profile', None)
+    if profile and profile.profile_picture:
+        queue_media_deletion(profile.profile_picture.name)
     # Private foods are removed with the account. Their versioned records use
     # PROTECT for catalogue safety, so release only this user's private rows.
     private_records = NutritionRecord.objects.filter(food__created_by=user)

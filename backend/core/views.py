@@ -40,6 +40,7 @@ class RegisterView(APIView):
 
     def post(self, request):
         email = str(request.data.get('email', '')).strip().lower()
+        username = str(request.data.get('username', '')).strip().lower()
         password = str(request.data.get('password', ''))
         name = str(request.data.get('display_name', '')).strip()[:80]
         timezone_name = str(request.data.get('timezone', 'Asia/Dhaka'))
@@ -49,6 +50,13 @@ class RegisterView(APIView):
             dob_raw = None
         if not email or '@' not in email:
             raise ValidationError({'email': 'Enter a valid email.'})
+        if username:
+            try:
+                User._meta.get_field('username').run_validators(username)
+            except ValidationError as exc:
+                raise ValidationError({'username': exc.messages}) from None
+            if User.objects.filter(username__iexact=username).exists():
+                raise ValidationError({'username': 'That username is already taken.'})
         try:
             password_validation.validate_password(password)
         except Exception as exc:
@@ -73,6 +81,9 @@ class RegisterView(APIView):
                 )
         except IntegrityError:
             raise ValidationError({'email': 'Account already exists.'}) from None
+        if username:
+            User.objects.filter(pk=user.pk).update(username=username)
+            user.username = username
         login(request, user)
         return Response(user_payload(user), status=status.HTTP_201_CREATED)
 
@@ -91,6 +102,22 @@ class LoginView(APIView):
         return Response(user_payload(user))
 
 
+class UsernameOrEmailLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        identifier = str(request.data.get('identifier', request.data.get('email', ''))).strip().lower()
+        password = str(request.data.get('password', ''))
+        user = User.objects.filter(
+            Q(email__iexact=identifier) | Q(username__iexact=identifier)
+        ).first()
+        if user is None or not user.check_password(password) or not user.is_active:
+            return Response({'error': 'Invalid username/email or password.'}, status=400)
+        login(request, user)
+        Profile.objects.get_or_create(user=user)
+        return Response(user_payload(user))
+
+
 class LogoutView(APIView):
     def post(self, request):
         logout(request)
@@ -103,7 +130,8 @@ def user_payload(user):
     goal_values = goal_values_for_user(user)
     if goal_values is not None:
         profile_data.update(goal_values)
-    return {'id': str(user.id), 'email': user.email, 'display_name': user.display_name,
+    return {'id': str(user.id), 'email': user.email, 'username': user.username,
+            'display_name': user.display_name,
             'profile': profile_data}
 
 
@@ -139,6 +167,40 @@ class MeView(APIView):
         delete_user_with_media(user)
         logout(request)
         return Response(status=204)
+
+
+class ProfilePictureView(APIView):
+    def get(self, request):
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        if not profile.profile_picture:
+            raise Http404
+        response = FileResponse(profile.profile_picture.open('rb'), content_type='image/*')
+        response['Cache-Control'] = 'private, max-age=3600'
+        return response
+
+    def post(self, request):
+        picture = request.FILES.get('profile_picture')
+        if picture is None:
+            raise ValidationError({'profile_picture': 'Choose an image to upload.'})
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        old_name = profile.profile_picture.name if profile.profile_picture else None
+        serializer = ProfileSerializer(
+            profile,
+            data={'profile_picture': picture},
+            partial=True,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        if old_name and old_name != profile.profile_picture.name:
+            profile.profile_picture.storage.delete(old_name)
+        return Response(user_payload(request.user))
+
+    def delete(self, request):
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        if profile.profile_picture:
+            profile.profile_picture.delete(save=True)
+        return Response(user_payload(request.user))
 
 
 class FoodListView(APIView):

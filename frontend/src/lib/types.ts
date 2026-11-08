@@ -1,5 +1,6 @@
 export type Gender = "" | "male" | "female" | "other";
 export type Profile = {
+  profile_picture_url?: string | null;
   timezone: string;
   units: string;
   gender?: Gender;
@@ -14,6 +15,7 @@ export type Profile = {
 export type User = {
   id: string;
   email: string;
+  username: string;
   display_name: string;
   profile: Profile;
 };

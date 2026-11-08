@@ -2,7 +2,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
@@ -10,6 +10,19 @@ from django.utils import timezone
 
 def key():
     return uuid.uuid4()
+
+
+MAX_PROFILE_PICTURE_SIZE = 5 * 1024 * 1024
+USERNAME_VALIDATOR = RegexValidator(
+    regex=r'^[a-z0-9](?:[a-z0-9._-]{1,28}[a-z0-9])?$',
+    message='Username must be 3-30 characters and use letters, numbers, dots, underscores, or hyphens.',
+)
+
+
+def validate_profile_picture_size(value):
+    from django.core.exceptions import ValidationError
+    if value.size > MAX_PROFILE_PICTURE_SIZE:
+        raise ValidationError('Profile picture must be 5 MB or smaller.')
 
 
 class UserManager(BaseUserManager):
@@ -28,16 +41,40 @@ class UserManager(BaseUserManager):
 
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=key, editable=False)
-    username = None
+    username = models.CharField(
+        max_length=30,
+        unique=True,
+        default='',
+        validators=[USERNAME_VALIDATOR],
+    )
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=80, blank=True)
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
     objects = UserManager()
 
+    def save(self, *args, **kwargs):
+        if not self.username:
+            base = ''.join(char for char in self.email.split('@', 1)[0].lower() if char.isalnum())[:24] or 'user'
+            candidate = base
+            suffix = 1
+            while type(self).objects.filter(username=candidate).exclude(pk=self.pk).exists():
+                candidate = f'{base[:24 - len(str(suffix))]}{suffix}'
+                suffix += 1
+            self.username = candidate
+        else:
+            self.username = self.username.strip().lower()
+        return super().save(*args, **kwargs)
+
 
 class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    profile_picture = models.ImageField(
+        upload_to='profile_pictures/%Y/%m/%d',
+        blank=True,
+        null=True,
+        validators=[validate_profile_picture_size],
+    )
     timezone = models.CharField(max_length=64, default='Asia/Dhaka')
     units = models.CharField(max_length=12, default='metric')
     gender = models.CharField(max_length=20, blank=True, default='')

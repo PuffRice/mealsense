@@ -719,6 +719,35 @@ button:focus-visible {
   font-size: 13px;
 }
 
+.avatar__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.avatar--profile {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  font-size: 24px;
+}
+
+.profile-picture-field {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-picture-field strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.profile-picture-field .settings-card__disclaimer {
+  margin-bottom: 8px;
+}
+
 .sidebar__user-info {
   flex: 1;
   min-width: 0;

@@ -17,6 +17,7 @@ import { calculateExactAge, getTodayIso } from "../profile/bmi";
 export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
   const [register, setRegister] = useState(false);
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [gender, setGender] = useState<Gender>("");
@@ -38,6 +39,7 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
           ? await auth.register(
               email,
               password,
+              username,
               name,
               Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
               gender,
@@ -123,10 +125,22 @@ export function AuthPage({ onSuccess }: { onSuccess: (user: User) => void }) {
                 )}
               </>
             )}
+            {register && (
+              <Field
+                label="Username"
+                placeholder="e.g. alex_foodie"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                minLength={3}
+                maxLength={30}
+                pattern="[a-zA-Z0-9._-]+"
+                required
+              />
+            )}
             <Field
-              label="Email address"
-              type="email"
-              placeholder="you@example.com"
+              label={register ? "Email address" : "Username or email"}
+              type={register ? "email" : "text"}
+              placeholder={register ? "you@example.com" : "Username or email"}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
