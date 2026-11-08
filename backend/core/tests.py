@@ -295,7 +295,7 @@ class NormalizeCandidatesTests(TestCase):
         self.assertTrue(all('name' in item for item in result))
 
 
-@override_settings(AI_TIMEOUT_SECONDS=5)
+@override_settings(AI_TIMEOUT_SECONDS=5, AI_PROVIDER='')
 class RecognitionTests(TestCase):
     def setUp(self):
         self.client = Client(enforce_csrf_checks=True)
@@ -405,3 +405,44 @@ class RecognitionTests(TestCase):
         body = response.json()
         self.assertEqual(body['status'], 'unavailable')
         self.assertEqual(body['error_code'], 'MODEL_NOT_CONFIGURED')
+
+    @override_settings(AI_PROVIDER='local', AI_API_KEYS={})
+    def test_local_recognition_persists_candidates_without_cloud_call(self):
+        candidates = [{'name': self.food.name, 'category': 'Dish', 'confidence': 0.912, 'food_id': None}]
+        with patch('core.local_recognition.local_candidates', return_value=(candidates, 'local:banglafoodnet:test')), \
+                patch('core.services._provider_request') as cloud, \
+                patch('core.views.provider_image_bytes') as compress:
+            response = self.upload()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        self.assertEqual(body['status'], 'completed')
+        self.assertEqual(body['model_version'], 'local:banglafoodnet:test')
+        self.assertEqual(body['candidates'][0]['food_id'], str(self.food.id))
+        saved = RecognitionResult.objects.get(pk=body['candidates'][0]['result_id'])
+        self.assertEqual(saved.confidence, Decimal('0.912'))
+        self.assertNotIn('grams', body['candidates'][0])
+        cloud.assert_not_called()
+        compress.assert_not_called()
+
+    @override_settings(AI_PROVIDER='local', AI_LOCAL_CHECKPOINT='/missing/mealsense-checkpoint.pth')
+    def test_missing_local_checkpoint_keeps_manual_logging_available(self):
+        with patch('core.services._provider_request') as cloud:
+            response = self.upload()
+        body = response.json()
+        self.assertEqual(body['status'], 'unavailable')
+        self.assertEqual(body['error_code'], 'MODEL_NOT_CONFIGURED')
+        self.assertTrue(FoodImage.objects.filter(pk=body['image_id']).exists())
+        cloud.assert_not_called()
+
+    @override_settings(AI_PROVIDER='local')
+    def test_local_failure_is_saved_without_cloud_fallback(self):
+        from .local_recognition import LocalModelError
+        with patch('core.local_recognition.local_candidates', side_effect=LocalModelError('LOCAL_MODEL_ERROR')), \
+                patch('core.services._provider_request') as cloud:
+            response = self.upload()
+        body = response.json()
+        self.assertEqual(body['status'], 'failed')
+        self.assertEqual(body['error_code'], 'LOCAL_MODEL_ERROR')
+        self.assertEqual(body['candidates'], [])
+        self.assertEqual(self.client.get(f"/api/v1/recognitions/{body['id']}/").json()['status'], 'failed')
+        cloud.assert_not_called()

@@ -790,6 +790,17 @@ User "1" --> "0..*" Notification
 
 ## 7. Backend Application Structure
 
+Current recognition implementation lives in the consolidated `backend/core/`
+app. `services.recognize_with_provider` routes `AI_PROVIDER=local` to
+`local_recognition.py`, which loads the BanglaFoodNet architecture in
+`banglafoodnet.py`. Checkpoints and reference notebooks are downloaded into
+the ignored `backend/model_artifacts/banglafoodnet/` folder; provenance is in
+`backend/model_artifacts.md`. Local inference uses only the supervised dish
+head, checkpoint label order, and training evaluation transforms. It does
+not provide portions, nutrition, ingredient safety, or non-food rejection.
+The existing cloud adapters remain selectable explicitly; local failures
+keep manual logging available without sending photos to a cloud provider.
+
 Use the following as a target structure, not a mandate to reorganize a
 working repository without reason.
 

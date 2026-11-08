@@ -37,31 +37,58 @@ Food values entered by users are marked `User supplied`. Verify them before rely
 
 ## Still to decide or build
 
-- AI model/provider and license. Image upload works; recognition currently returns `MODEL_NOT_CONFIGURED` and the app gives manual entry. No model result is invented.
-- Curated/licensed nutrition catalog and provenance. The app starts with an empty shared catalog.
-- Offline mutation queue and sync conflict UI. Offline text drafts remain on this device, then can be submitted when online.
-- AI model/provider and license. Image upload works; recognition currently returns `MODEL_NOT_CONFIGURED` and the app gives manual entry. No model result is invented.
+- Confirm model/dataset licensing and expand evaluation beyond the 19 trained food classes.
 - Curated/licensed nutrition catalog and provenance. The app starts with an empty shared catalog.
 - Offline mutation queue and sync conflict UI. Offline text drafts remain on this device, then can be submitted when online.
 - Production private object storage, image retention policy, PostgreSQL deployment, backups, observability, export, and API schema generation.
 
-## Temporary cloud recognition switch
 
-Until the trained model ships, meal-photo recognition can call a cloud vision API. This is a temporary measure; cloud suggestions are always reviewed and confirmed like any other output, and manual logging still works when the provider is off or fails.
+## Recognition switch
+
+Meal photo recognition supports the supplied BanglaFoodNet checkpoint on the backend.
+The current local configuration uses the fine-tuned model, with CPU inference and no
+cloud API calls. Suggestions still need confirmation; quantities and nutrition come
+from the catalog and user-confirmed grams.
 
 ```bash
-export AI_PROVIDER=openai        # '' (off, default) | openai | gemini
-export AI_VISION_MODEL=gpt-4o-mini      # optional; openai default gpt-4o-mini, gemini default gemini-2.5-flash
-export OPENAI_API_KEY=...        # used when AI_PROVIDER=openai
-export GEMINI_API_KEY=...        # used when AI_PROVIDER=gemini
-export AI_TIMEOUT_SECONDS=30     # optional request timeout
+cd backend
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements-local.txt
+cp .env.example .env
 ```
 
-- `AI_PROVIDER` empty keeps recognition unavailable (`MODEL_NOT_CONFIGURED`); the PWA stays manual-only. It is the only switch to change.
-- Candidates are label suggestions with a confidence value; no portion or nutrient value is taken from a photo. Each candidate also carries `food_id` when it matched a catalog food the user can use.
-- Provider failures set prediction `status=failed` with `error_code=PROVIDER_ERROR` and never block saving a meal manually.
-- Keys are read from env only and are not logged. For the provider call the server makes a small downscaled JPEG copy of the photo (the stored original keeps full quality), so uploads still leave the device during recognition.
-- Swapping to the in-house model later means replacing `core/services.py:recognize_with_provider`; the view and API shape stay unchanged.
+The model folder has been downloaded to `backend/model_artifacts/banglafoodnet/`.
+For another checkout, download the contents of the
+[shared Drive folder](https://drive.google.com/drive/folders/1RAlqpooPVkkW7pqyaYGcKgKkDrG7Yvxr)
+into that directory. Large checkpoints and original notebooks are git-ignored.
+See [model provenance](backend/model_artifacts.md) for checksums and model details.
+
+```dotenv
+AI_PROVIDER=local
+AI_LOCAL_CHECKPOINT=model_artifacts/banglafoodnet/banglafoodnet_finetuned.pth
+AI_LOCAL_DEVICE=cpu
+```
+
+Django loads `backend/.env` on startup. Existing environment variables take priority;
+restart Django after editing it. Relative checkpoint paths resolve against `backend/`.
+CPU dependencies are in `requirements-local.txt`; GPU deployments need a matching
+CUDA build of PyTorch/Torchvision and `AI_LOCAL_DEVICE=cuda`.
+
+- `AI_PROVIDER=local` uses the checkpoint's label order, image size, and dish weights.
+  It returns up to five softmax-ranked suggestions and matches catalog foods the user
+  can access. The loaded model is cached per backend process; the model version
+  includes the checkpoint hash. Restart workers when replacing a checkpoint.
+- The model classifies the whole photo into 19 known foods. It does not detect
+  separate regions, estimate portions, or reject non-food/out-of-distribution images.
+  Its component and ingredient heads are unused because they were not supervised.
+- Missing files/dependencies return `unavailable`; invalid checkpoints or inference
+  failures return `failed`. Manual logging stays available. Local failures never
+  trigger a cloud fallback. Check server logs for load failures.
+- An empty `AI_PROVIDER` turns recognition off (`MODEL_NOT_CONFIGURED`).
+- `AI_PROVIDER=openai` with `OPENAI_API_KEY`, or `AI_PROVIDER=gemini` with
+  `GEMINI_API_KEY`, selects the existing cloud adapter. `AI_VISION_MODEL` optionally
+  overrides its default model and `AI_TIMEOUT_SECONDS` sets its request timeout.
+  Cloud mode sends a downscaled JPEG to that provider. Keys stay in backend env.
 
 ## Architecture and design
 

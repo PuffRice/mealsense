@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from hashlib import sha256
 
 from PIL import Image, UnidentifiedImageError
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, password_validation
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -303,7 +304,11 @@ class RecognitionView(APIView):
         upload.name = f'{uuid4().hex}.{extension}'
         checksum = sha256(upload.read()).hexdigest()
         upload.seek(0)
-        provider_bytes, provider_mime = provider_image_bytes(image)
+        if settings.AI_PROVIDER == 'local':
+            # Preserve the source pixels and EXIF for checkpoint preprocessing.
+            provider_bytes, provider_mime = upload.read(), mime
+        else:
+            provider_bytes, provider_mime = provider_image_bytes(image)
         upload.seek(0)
         stored = FoodImage.objects.create(user=request.user, file=upload, mime_type=mime,
                                          size_bytes=upload.size, width=image.width,

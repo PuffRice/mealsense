@@ -5,6 +5,7 @@ frontend/.vite/
 backend/.venv/
 backend/db.sqlite3
 backend/private_media/
+backend/model_artifacts/
 **/__pycache__/
 *.pyc
 .env

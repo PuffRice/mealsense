@@ -1,8 +1,10 @@
 import os
 from pathlib import Path
 from urllib.parse import urlparse
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / '.env', override=False)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-change-me-before-deploying')
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 if not DEBUG and SECRET_KEY == 'dev-only-change-me-before-deploying':
@@ -67,8 +69,7 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
-# Temporary cloud vision adapters used until an in-house model is trained.
-# Switch via env: AI_PROVIDER='' (off) | 'openai' | 'gemini'; keys stay in env.
+# Switch via env: AI_PROVIDER='' (off) | 'local' | 'openai' | 'gemini'.
 AI_PROVIDER = os.environ.get('AI_PROVIDER', '').strip().lower()
 AI_VISION_MODEL = os.environ.get('AI_VISION_MODEL', '').strip()
 AI_API_KEYS = {
@@ -76,6 +77,10 @@ AI_API_KEYS = {
     'gemini': os.environ.get('GEMINI_API_KEY', ''),
 }
 AI_TIMEOUT_SECONDS = float(os.environ.get('AI_TIMEOUT_SECONDS', '30'))
+AI_LOCAL_CHECKPOINT = os.environ.get(
+    'AI_LOCAL_CHECKPOINT', str(BASE_DIR / 'model_artifacts/banglafoodnet/banglafoodnet_finetuned.pth'))
+# CPU works without CUDA; use 'cuda' only with a compatible PyTorch installation.
+AI_LOCAL_DEVICE = os.environ.get('AI_LOCAL_DEVICE', 'cpu').strip()
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],

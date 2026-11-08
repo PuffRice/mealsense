@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 TWO = Decimal('0.01')
 
-# --- Temporary cloud recognition adapters (swap for the in-house model later) ---
+# --- Recognition adapters ---
 # Kept here so RecognitionsView only depends on this one entry point.
 _MAX_CANDIDATES = 5
 _DEFAULT_VISION_MODELS = {'openai': 'gpt-4o-mini', 'gemini': 'gemini-2.5-flash'}
@@ -161,13 +161,16 @@ def _gemini_candidates(api_key, model, image_bytes, mime):
 
 
 def recognize_with_provider(image_bytes, mime):
-    """Single switch point for cloud recognition.
+    """Single switch point for local or cloud recognition.
 
     Returns {'status', 'candidates', 'model_version', 'error_code'} and never
-    raises for normal cloud failures; missing/unapproved config counts as
+    raises for normal inference failures; missing/unapproved config counts as
     unavailable so callers fall back to manual logging.
     """
     provider = getattr(settings, 'AI_PROVIDER', '')
+    if provider == 'local':
+        from .local_recognition import recognize_locally
+        return recognize_locally(image_bytes)
     if provider not in _DEFAULT_VISION_MODELS:
         return {'status': 'unavailable', 'candidates': [], 'model_version': '', 'error_code': 'MODEL_NOT_CONFIGURED'}
     api_key = (getattr(settings, 'AI_API_KEYS', {}) or {}).get(provider, '')
