@@ -95,10 +95,14 @@ class Food(models.Model):
     category = models.CharField(max_length=60, blank=True)
     is_active = models.BooleanField(default=True)
     is_verified = models.BooleanField(default=False)
-    kcal_100g = models.DecimalField(max_digits=8, decimal_places=2, validators=[MinValueValidator(0)])
-    protein_100g = models.DecimalField(max_digits=8, decimal_places=2, validators=[MinValueValidator(0)])
-    carbs_100g = models.DecimalField(max_digits=8, decimal_places=2, validators=[MinValueValidator(0)])
-    fat_100g = models.DecimalField(max_digits=8, decimal_places=2, validators=[MinValueValidator(0)])
+    kcal_100g = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True,
+                                    validators=[MinValueValidator(0)])
+    protein_100g = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True,
+                                       validators=[MinValueValidator(0)])
+    carbs_100g = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True,
+                                     validators=[MinValueValidator(0)])
+    fat_100g = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True,
+                                   validators=[MinValueValidator(0)])
     source = models.CharField(max_length=160)
     source_ref = models.CharField(max_length=250, blank=True)
     is_sample = models.BooleanField(default=False)

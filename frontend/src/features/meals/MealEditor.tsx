@@ -105,10 +105,19 @@ export function MealEditor({
     () =>
       entries.reduce((sum, entry) => {
         const food = foods.find((item) => item.id === entry.food_id);
-        return sum + (food ? (Number(food.kcal_100g) * entry.grams) / 100 : 0);
+        return (
+          sum +
+          (food?.kcal_100g !== null && food?.kcal_100g !== undefined
+            ? (Number(food.kcal_100g) * entry.grams) / 100
+            : 0)
+        );
       }, 0),
     [entries, foods],
   );
+  const hasPendingNutrition = entries.some((entry) => {
+    const food = foods.find((item) => item.id === entry.food_id);
+    return food?.kcal_100g === null || food?.kcal_100g === undefined;
+  });
   function addFood(food: Food, recognitionResultId?: string) {
     setEntries([
       ...entries,
@@ -318,7 +327,9 @@ export function MealEditor({
                     {food.name}
                     <small>
                       {food.is_sample ? "Sample estimate" : food.source} ·{" "}
-                      {Math.round(Number(food.kcal_100g))} kcal / 100 g
+                      {food.kcal_100g === null
+                        ? "Nutrition pending"
+                        : `${Math.round(Number(food.kcal_100g))} kcal / 100 g`}
                     </small>
                   </span>
                   <Plus size={17} />
@@ -339,11 +350,10 @@ export function MealEditor({
                 <div>
                   <strong>{food?.name || "Unknown food"}</strong>
                   <small>
-                    {food?.source || "Reference"} · ~
-                    {Math.round(
-                      (Number(food?.kcal_100g || 0) * entry.grams) / 100,
-                    )}{" "}
-                    kcal
+                    {food?.source || "Reference"} ·{" "}
+                    {food?.kcal_100g === null
+                      ? "Nutrition pending"
+                      : `~${Math.round((Number(food?.kcal_100g || 0) * entry.grams) / 100)} kcal`}
                   </small>
                   {!!food?.servings?.length && (
                     <select
@@ -537,7 +547,13 @@ export function MealEditor({
         )}
         <div className="modal__foot">
           <span>
-            Estimated total <strong>~{Math.round(estimate)} kcal</strong>
+            {hasPendingNutrition ? (
+              <strong>Nutrition pending</strong>
+            ) : (
+              <>
+                Estimated total <strong>~{Math.round(estimate)} kcal</strong>
+              </>
+            )}
           </span>
           <GlassButton type="submit" disabled={busy} icon={<Check size={17} />}>
             {busy ? "Saving..." : meal ? "Save changes" : "Save meal"}

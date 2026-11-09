@@ -215,6 +215,9 @@ class FoodListView(APIView):
 
     def post(self, request):
         data = request.data.copy()
+        nutrient_fields = ('kcal_100g', 'protein_100g', 'carbs_100g', 'fat_100g')
+        if any(data.get(field) in (None, '') for field in nutrient_fields):
+            raise ValidationError({'nutrition': 'Enter all per-100-g nutrition values.'})
         data['source'] = 'User supplied'
         data['source_ref'] = ''
         serializer = FoodSerializer(data=data)

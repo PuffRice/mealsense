@@ -24,10 +24,10 @@ export type Food = {
   name: string;
   name_bn?: string;
   category: string;
-  kcal_100g: string;
-  protein_100g: string;
-  carbs_100g: string;
-  fat_100g: string;
+  kcal_100g: string | null;
+  protein_100g: string | null;
+  carbs_100g: string | null;
+  fat_100g: string | null;
   source: string;
   is_sample: boolean;
   is_verified?: boolean;

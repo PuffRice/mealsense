@@ -7,6 +7,7 @@ from uuid import uuid4
 from PIL import Image
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from .models import (Food, FoodAlias, FoodImage, FoodNutrition, FoodPrediction, FoodServing, Meal, MediaDeletionJob,
@@ -128,6 +129,24 @@ class MealApiTests(TestCase):
         mismatch = self.post('/api/v1/meals/', self.payload(items=[
             {'food_id': str(other_food.id), 'grams': 150, 'serving_id': serving.id}]))
         self.assertEqual(mismatch.status_code, 400)
+
+    def test_model_catalog_foods_are_shared_with_unknown_nutrition(self):
+        foods = self.client.get('/api/v1/foods/?q=biriyani').json()
+        self.assertEqual(len(foods), 1)
+        self.assertEqual(foods[0]['name'], 'Biryani')
+        self.assertEqual(foods[0]['name_bn'], 'বিরিয়ানি')
+        self.assertIsNone(foods[0]['kcal_100g'])
+        self.assertIsNone(foods[0]['protein_100g'])
+        self.assertFalse(foods[0]['is_verified'])
+
+    def test_model_catalog_food_cannot_create_fake_nutrition_snapshot(self):
+        food = Food.objects.get(created_by=None, name='Biryani')
+        response = self.post('/api/v1/meals/', self.payload(items=[
+            {'food_id': str(food.id), 'grams': 100},
+        ]))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('missing a required nutrient value', str(response.json()))
+        self.assertFalse(Meal.objects.filter(user=self.user, items__food=food).exists())
 
     def test_unapproved_nutrition_revision_does_not_change_logged_amount(self):
         source = NutritionSource.objects.create(name='New import')
@@ -328,26 +347,28 @@ class RecognitionCatalogMatchingTests(TestCase):
         self.user = User.objects.create_user(email='labels@example.com', password='secure-pass-123')
 
     def test_model_spelling_alias_matches_catalog_food(self):
-        food = Food.objects.create(name='Paratha', category='Bread', kcal_100g=300,
+        food = Food.objects.create(created_by=self.user, name='Paratha', category='Bread', kcal_100g=300,
                                    protein_100g=7, carbs_100g=45, fat_100g=10,
                                    source='Test fixture')
         matches = matched_catalog_foods(
             [{'name': 'Paratha', 'model_label': 'porota', 'confidence': 0.8}], self.user)
         self.assertEqual(matches['Paratha'], str(food.id))
 
-    def test_food_alias_matches_model_spelling(self):
-        food = Food.objects.create(name='Ilish bhaja', category='Fish', kcal_100g=250,
+    def test_seeded_model_food_wins_over_looser_user_alias(self):
+        food = Food.objects.create(created_by=self.user, name='Ilish bhaja', category='Fish', kcal_100g=250,
                                    protein_100g=22, carbs_100g=1, fat_100g=18,
                                    source='Test fixture')
         FoodAlias.objects.create(food=food, alias='hilsha fish', language='en')
         matches = matched_catalog_foods(
             [{'name': 'Hilsa fish', 'model_label': 'hilsha_fish', 'confidence': 0.8}], self.user)
-        self.assertEqual(matches['Hilsa fish'], str(food.id))
+        catalog_food = Food.objects.get(created_by=None, name='Hilsa fish')
+        self.assertEqual(matches['Hilsa fish'], str(catalog_food.id))
 
 
 @override_settings(AI_TIMEOUT_SECONDS=5, AI_PROVIDER='')
 class RecognitionTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = Client(enforce_csrf_checks=True)
         self.user = User.objects.create_user(email='a@example.com', password='secure-pass-123')
         Profile.objects.create(user=self.user)

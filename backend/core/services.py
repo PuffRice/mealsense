@@ -195,6 +195,7 @@ def matched_catalog_foods(candidates, user):
     foods = list(Food.objects.filter(
         Q(created_by=user) | Q(created_by__isnull=True), is_active=True,
     ).prefetch_related('aliases'))
+    foods.sort(key=lambda food: food.created_by_id != user.id)
 
     def normalized(value):
         return re.sub(r'[^a-z0-9]+', ' ', str(value).casefold()).strip()
@@ -242,8 +243,10 @@ def nutrient_snapshot(food: Food, grams: Decimal):
         record = (NutritionRecord.objects.filter(food=food, version=1)
                   .select_related('source').first())
     values = record.nutrient_values if record else {
-        'kcal': str(food.kcal_100g), 'protein_g': str(food.protein_100g),
-        'carbs_g': str(food.carbs_100g), 'fat_g': str(food.fat_100g),
+        'kcal': str(food.kcal_100g) if food.kcal_100g is not None else None,
+        'protein_g': str(food.protein_100g) if food.protein_100g is not None else None,
+        'carbs_g': str(food.carbs_100g) if food.carbs_100g is not None else None,
+        'fat_g': str(food.fat_100g) if food.fat_100g is not None else None,
     }
     basis_quantity = record.basis_quantity if record else Decimal('100')
     factor = grams / basis_quantity
