@@ -12,7 +12,7 @@ from django.utils import timezone
 from .models import (Food, FoodAlias, FoodImage, FoodNutrition, FoodPrediction, FoodServing, Meal, MediaDeletionJob,
                      NutritionGoal, NutritionRecord, NutritionSource,
                      RecognitionResult, Profile, User)
-from .services import ProviderError, normalize_candidates
+from .services import ProviderError, matched_catalog_foods, normalize_candidates
 
 
 class MealApiTests(TestCase):
@@ -321,6 +321,28 @@ class NormalizeCandidatesTests(TestCase):
         self.assertEqual(result[2]['name'], 'Low')
         self.assertEqual(result[2]['confidence'], 0.0)
         self.assertTrue(all('name' in item for item in result))
+
+
+class RecognitionCatalogMatchingTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(email='labels@example.com', password='secure-pass-123')
+
+    def test_model_spelling_alias_matches_catalog_food(self):
+        food = Food.objects.create(name='Paratha', category='Bread', kcal_100g=300,
+                                   protein_100g=7, carbs_100g=45, fat_100g=10,
+                                   source='Test fixture')
+        matches = matched_catalog_foods(
+            [{'name': 'Paratha', 'model_label': 'porota', 'confidence': 0.8}], self.user)
+        self.assertEqual(matches['Paratha'], str(food.id))
+
+    def test_food_alias_matches_model_spelling(self):
+        food = Food.objects.create(name='Ilish bhaja', category='Fish', kcal_100g=250,
+                                   protein_100g=22, carbs_100g=1, fat_100g=18,
+                                   source='Test fixture')
+        FoodAlias.objects.create(food=food, alias='hilsha fish', language='en')
+        matches = matched_catalog_foods(
+            [{'name': 'Hilsa fish', 'model_label': 'hilsha_fish', 'confidence': 0.8}], self.user)
+        self.assertEqual(matches['Hilsa fish'], str(food.id))
 
 
 @override_settings(AI_TIMEOUT_SECONDS=5, AI_PROVIDER='')

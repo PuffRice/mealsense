@@ -65,6 +65,7 @@ export type MealItem = {
 };
 export type Candidate = {
   name: string;
+  model_label?: string;
   category: string;
   confidence: number;
   food_id: string | null;

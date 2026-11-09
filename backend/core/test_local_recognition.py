@@ -44,7 +44,8 @@ class LocalRuntimeTests(SimpleTestCase):
         self.assertEqual([c['name'] for c in candidates], ['Egg omelette', 'Morog polao', 'Yogurt'])
         self.assertAlmostEqual(candidates[0]['confidence'], 0.867, places=3)
         self.assertEqual(version, 'local:test')
-        self.assertTrue(all(set(c) == {'name', 'category', 'confidence', 'food_id'} for c in candidates))
+        self.assertTrue(all(set(c) == {'name', 'model_label', 'category', 'confidence', 'food_id'}
+                            for c in candidates))
 
     def test_corrupt_checkpoint_returns_failed(self):
         with tempfile.NamedTemporaryFile() as source:

@@ -4,6 +4,7 @@ from datetime import datetime, time, timedelta, timezone
 import base64
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 from io import BytesIO
@@ -21,6 +22,7 @@ from .models import (Food, FoodImage, FoodNutrition, FoodPrediction, FoodServing
                      IdempotencyRecord, Meal, MealItem, MediaDeletionJob,
                      NutrientTarget, NutritionGoal, NutritionRecord,
                      RecognitionResult)
+from .recognition_labels import model_search_names
 
 logger = logging.getLogger(__name__)
 
@@ -190,18 +192,35 @@ def recognize_with_provider(image_bytes, mime):
 
 def matched_catalog_foods(candidates, user):
     """Map candidate names to existing catalogue foods the user may pick."""
+    foods = list(Food.objects.filter(
+        Q(created_by=user) | Q(created_by__isnull=True), is_active=True,
+    ).prefetch_related('aliases'))
+
+    def normalized(value):
+        return re.sub(r'[^a-z0-9]+', ' ', str(value).casefold()).strip()
+
+    exact_names = {}
+    for food in foods:
+        values = (food.name, food.name_bn, *(alias.alias for alias in food.aliases.all()))
+        for value in values:
+            key = normalized(value)
+            if key:
+                exact_names.setdefault(key, food)
+
     result = {}
     for candidate in candidates:
-        words = [word for word in candidate['name'].replace('-', ' ').split() if len(word) > 2]
+        search_names = model_search_names(candidate.get('model_label', ''), candidate['name'])
+        food = next((exact_names.get(normalized(name)) for name in search_names
+                     if exact_names.get(normalized(name))), None)
+        words = [word for word in normalized(candidate['name']).split() if len(word) > 2]
         phrases = [' '.join(words)] + [' '.join(words[index:index + 2]) for index in range(max(0, len(words) - 1))]
-        food = None
-        for phrase in phrases:
+        for phrase in phrases if food is None else ():
             if not phrase:
                 continue
-            food = Food.objects.filter(Q(created_by=user) | Q(created_by__isnull=True),
-                                       is_active=True).filter(
-                                           Q(name__icontains=phrase) | Q(name_bn__icontains=phrase) |
-                                           Q(aliases__alias__icontains=phrase)).distinct().first()
+            food = next((item for item in foods if any(
+                phrase in normalized(value) for value in
+                (item.name, item.name_bn, *(alias.alias for alias in item.aliases.all()))
+            )), None)
             if food:
                 break
         if food:

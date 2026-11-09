@@ -8,10 +8,10 @@ from threading import Lock
 
 from django.conf import settings
 from PIL import Image, ImageOps
+from .recognition_labels import model_display_name
 
 logger = logging.getLogger(__name__)
 _load_lock = Lock()
-_DISPLAY_NAMES = {'egg_omlete': 'Egg omelette'}
 
 
 class LocalModelError(Exception):
@@ -80,7 +80,7 @@ def local_candidates(image_bytes):
                 raise ValueError('Invalid model output')
             scores, indices = probabilities.topk(min(5, len(labels)))
         candidates = [
-            {'name': _DISPLAY_NAMES.get(labels[index], labels[index].replace('_', ' ').capitalize()),
+            {'name': model_display_name(labels[index]), 'model_label': labels[index],
              'category': 'Dish', 'confidence': round(score, 3), 'food_id': None}
             for score, index in zip(scores.cpu().tolist(), indices.cpu().tolist())
         ]

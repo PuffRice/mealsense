@@ -62,6 +62,9 @@ export function MealEditor({
   const [customProtein, setCustomProtein] = useState("");
   const [customCarbs, setCustomCarbs] = useState("");
   const [customFat, setCustomFat] = useState("");
+  const [customRecognitionResultId, setCustomRecognitionResultId] = useState<
+    string | undefined
+  >();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [photoNotice, setPhotoNotice] = useState("");
@@ -141,9 +144,10 @@ export function MealEditor({
         source_ref: "",
       } as Parameters<typeof foodsApi.create>[0]);
       onFoodCreated(food);
-      addFood(food);
+      addFood(food, customRecognitionResultId);
       setCustom(false);
       setCustomName("");
+      setCustomRecognitionResultId(undefined);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not add food.");
     } finally {
@@ -187,8 +191,25 @@ export function MealEditor({
     const food = candidate.food_id
       ? foods.find((item) => item.id === candidate.food_id)
       : undefined;
-    if (food) addFood(food, candidate.result_id);
-    else setQuery(candidate.name);
+    if (food) {
+      addFood(food, candidate.result_id);
+      setCustomRecognitionResultId(undefined);
+      return;
+    }
+    setQuery("");
+    setCustom(true);
+    setCustomName(candidate.name);
+    setCustomRecognitionResultId(candidate.result_id);
+    setPhotoNotice(
+      `${candidate.name} is not in your food catalog yet. Add nutrition from a trusted label or reference to use it.`,
+    );
+    requestAnimationFrame(() => {
+      document.getElementById("custom-food-name")?.focus();
+      document.getElementById("custom-food-name")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -396,7 +417,10 @@ export function MealEditor({
           <button
             type="button"
             className="text-action"
-            onClick={() => setCustom(!custom)}
+            onClick={() => {
+              setCustom(!custom);
+              setCustomRecognitionResultId(undefined);
+            }}
           >
             <Plus size={16} />{" "}
             {custom ? "Hide custom food" : "Add a food not listed"}
@@ -404,6 +428,7 @@ export function MealEditor({
           {custom && (
             <div className="custom-food">
               <Field
+                id="custom-food-name"
                 label="Food name"
                 value={customName}
                 onChange={(event) => setCustomName(event.target.value)}
@@ -488,7 +513,7 @@ export function MealEditor({
                   onClick={() => applySuggestion(item)}
                 >
                   {item.name}
-                  {item.category && <small>{item.category}</small>}
+                  <small>{item.food_id ? "Select" : "Add nutrition"}</small>
                 </button>
               ))}
             </div>
