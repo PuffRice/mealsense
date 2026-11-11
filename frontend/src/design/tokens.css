@@ -11,144 +11,156 @@
   --font-display:
     "Outfit", "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
 
-  /* Full-Application Atmospheric Canvas & Background SVG */
-  --canvas: #edf4ef;
-  --canvas-deep: #e2ede6;
-  --app-bg-light: url("/bg-light.svg"), url("/bg.svg");
-  --app-bg-dark: url("/bg-dark.svg"), url("/bg.svg");
-  --app-bg-image: var(--app-bg-light);
+  /* Brand Master Palette */
+  --brand-primary: #113e2e;
+  --brand-accent: #649e66;
+  --brand-accent-hover: #74b076;
+  --canvas-origin: #f3f1dc;
 
-  /* Glass Surface System (Light Mode) */
-  --glass-opacity: 0.64;
-  --glass-opacity-elevated: 0.78;
-  --glass-opacity-subtle: 0.46;
-  --glass-surface: rgba(255, 255, 255, var(--glass-opacity));
-  --glass-surface-elevated: rgba(255, 255, 255, var(--glass-opacity-elevated));
-  --glass-surface-subtle: rgba(255, 255, 255, var(--glass-opacity-subtle));
-  --glass-surface-hover: rgba(255, 255, 255, 0.82);
-  --glass-sidebar: rgba(255, 255, 255, 0.68);
-  --glass-navbar: rgba(255, 255, 255, 0.62);
-  --glass-modal: rgba(252, 254, 253, 0.84);
-  --glass-input: rgba(255, 255, 255, 0.62);
-  --glass-input-focus: rgba(255, 255, 255, 0.9);
-  --glass-dropdown: rgba(255, 255, 255, 0.88);
+  /* 3.1 Backgrounds & Surfaces (Light Mode - Warm Slate) */
+  --canvas: #faf8f2; /* Warm porcelain */
+  --canvas-deep: #f3f0e6; /* Almond-tinted cream */
+  --surface: #ffffff; /* Pure white base cards & panels */
+  --surface-elevated: #f3f0e6; /* Almond-tinted cream (Modals) */
+  --surface-subtle: #faf8f2; /* Subtle alternating rows */
+  --surface-muted: #e8efe5; /* Matcha mist */
 
-  /* Legacy surface aliases mapped to Glass system */
-  --surface: var(--glass-surface);
-  --surface-soft: var(--glass-surface-subtle);
-  --surface-muted: rgba(26, 67, 49, 0.08);
+  /* Glass/Surface Aliases for backwards compatibility */
+  --glass-opacity: 0.96;
+  --glass-opacity-elevated: 1;
+  --glass-opacity-subtle: 0.75;
+  --glass-surface: #ffffff;
+  --glass-surface-elevated: #f3f0e6;
+  --glass-surface-subtle: #faf8f2;
+  --glass-surface-hover: #f8f6ef;
+  --glass-sidebar: rgba(250, 248, 242, 0.94);
+  --glass-navbar: rgba(
+    255,
+    255,
+    255,
+    0.85
+  ); /* 85% surface background opacity */
+  --glass-modal: #f3f0e6;
+  --glass-input: #ffffff;
+  --glass-input-focus: #ffffff;
+  --glass-dropdown: #ffffff;
 
-  /* Backdrop Blur Intensity */
-  --blur-xs: 8px;
-  --blur-sm: 14px;
-  --blur-md: 22px;
-  --blur-lg: 30px;
-  --blur-xl: 40px;
-  --glass-saturate: 165%;
+  /* 3.2 Borders & Outlines (Light Mode) */
+  --border: #e3e0d3; /* Soft parchment grey */
+  --border-subtle: #e3e0d3;
+  --glass-border: #e3e0d3;
+  --glass-border-subtle: #e3e0d3;
+  --glass-border-strong: #649e66;
+  --glass-highlight-inset: rgba(255, 255, 255, 0.6);
+  --ring: #649e66; /* Active/Focus Rings: Muted Sage */
 
-  /* Borders & Specular Liquid Highlights */
-  --glass-border: rgba(255, 255, 255, 0.75);
-  --glass-border-subtle: rgba(26, 67, 49, 0.09);
-  --glass-border-strong: rgba(28, 92, 65, 0.24);
-  --glass-highlight-inset: rgba(255, 255, 255, 0.85);
-  --glass-rim-bottom: rgba(22, 58, 42, 0.06);
-  --border: rgba(26, 67, 49, 0.11);
+  /* 3.3 Typography Hierarchy (Light Mode) */
+  --text: #113e2e; /* Primary (Headings): Deep Forest Green */
+  --text-soft: #4a5851; /* Secondary (Subtitles): Muted evergreen */
+  --text-muted: #829189; /* Tertiary (Placeholders): Washed stone */
 
-  /* Text Hierarchy */
-  --text: #11231b;
-  --text-soft: #4c6458;
-  --text-muted: #6f867a;
+  /* 3.4 Interactive Elements & Accents (Light Mode) */
+  --brand: #113e2e; /* Primary Button Fill: Deep Forest Green */
+  --brand-hover: #18523e; /* Primary Button Hover: Dark moss */
+  --on-brand: #faf8f2; /* Primary Button Text: Pale cream */
+  --brand-soft: #e8efe5; /* Soft Badges & Pills: Matcha mist */
+  --brand-glow: rgba(100, 158, 102, 0.25);
+  --accent: #e8efe5;
+  --accent-strong: #649e66;
 
-  /* Brand & Accents (MealSense Emerald & Organic Greens) */
-  --brand: #185a40;
-  --brand-hover: #124732;
-  --brand-soft: rgba(24, 90, 64, 0.11);
-  --brand-glow: rgba(34, 139, 96, 0.22);
-  --accent: rgba(36, 107, 77, 0.26);
-  --accent-strong: #1e6b4c;
-  --on-brand: #ffffff;
+  /* Soft Badges & Pills */
+  --badge-pill-bg: #e8efe5;
+  --badge-pill-text: #113e2e;
 
-  /* Macronutrient Semantic Accents */
-  --macro-protein: #185a40;
-  --macro-carbs: #2b8a64;
-  --macro-fat: #4b9b6e;
-  --peach: rgba(255, 255, 255, 0.55);
-  --orange: #2b8a64;
+  /* Status Colors */
+  --danger: #ba3c3c; /* Error / Destructive: Muted crimson */
+  --danger-soft: rgba(186, 60, 60, 0.12);
+  --error-bg: #f3f0e6;
+  --error-text: #ba3c3c;
+  --success: #2e7d32; /* Success / Validation: Forest validation */
+  --success-soft: rgba(46, 125, 50, 0.12);
+  --success-text: #2e7d32;
 
-  /* Status & Semantic Alerts */
-  --danger: #b83b34;
-  --danger-soft: rgba(184, 59, 52, 0.1);
-  --error-bg: rgba(255, 238, 235, 0.78);
-  --error-text: #a6322b;
+  /* Nutrition / Macronutrient Accents */
+  --macro-protein: #113e2e;
+  --macro-carbs: #649e66;
+  --macro-fat: #4a5851;
+  --peach: #e8efe5;
+  --orange: #649e66;
 
-  /* Layered Depth & Shadows */
-  --glass-shadow-sm:
-    0 4px 14px -2px rgba(16, 42, 30, 0.05), 0 1px 3px rgba(16, 42, 30, 0.04),
-    inset 0 1px 0 0 var(--glass-highlight-inset);
-  --glass-shadow:
-    0 12px 32px -8px rgba(15, 44, 31, 0.07),
-    0 2px 8px -2px rgba(15, 44, 31, 0.04),
-    inset 0 1px 0 0 var(--glass-highlight-inset);
-  --glass-shadow-lg:
-    0 20px 48px -12px rgba(14, 42, 29, 0.11),
-    0 4px 14px -3px rgba(14, 42, 29, 0.05),
-    inset 0 1px 0 0 var(--glass-highlight-inset);
-  --glass-shadow-sidebar:
-    0 18px 44px -10px rgba(14, 42, 29, 0.09), 0 2px 10px rgba(14, 42, 29, 0.04),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+  /* 4.2 Elevation Shadows */
+  /* Light Mode Elevation: 20px shadow, 4px downward offset, -2px spread, Deep Forest Green #113E2E at 5% */
+  --elevation-shadow: 0 4px 20px -2px rgba(17, 62, 46, 0.05);
+  --glass-shadow-sm: 0 2px 8px -1px rgba(17, 62, 46, 0.04);
+  --glass-shadow: var(--elevation-shadow);
+  --glass-shadow-lg: var(--elevation-shadow);
+  --glass-shadow-sidebar: 2px 0 16px -2px rgba(17, 62, 46, 0.04);
   --glass-shadow-modal:
-    0 32px 80px -16px rgba(10, 30, 21, 0.22),
-    0 8px 24px -6px rgba(10, 30, 21, 0.1),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.92);
+    0 12px 32px -4px rgba(17, 62, 46, 0.12), var(--elevation-shadow);
+  --shadow: var(--elevation-shadow);
+  --shadow-button: rgba(17, 62, 46, 0.16);
+  --shadow-small: rgba(17, 62, 46, 0.04);
+  --shadow-mobile: 0 -4px 16px -2px rgba(17, 62, 46, 0.06);
+  --shadow-plate: rgba(17, 62, 46, 0.06);
+  --shadow-dialog: rgba(17, 62, 46, 0.2);
+  --dialog-backdrop: rgba(17, 62, 46, 0.28);
+  --shadow-emoji: rgba(17, 62, 46, 0.05);
 
-  --shadow: var(--glass-shadow);
-  --shadow-button: rgba(24, 90, 64, 0.22);
-  --shadow-small: rgba(15, 44, 31, 0.06);
-  --shadow-mobile: rgba(15, 44, 31, 0.1);
-  --shadow-plate: rgba(18, 55, 39, 0.12);
-  --shadow-dialog: rgba(10, 28, 20, 0.24);
-  --dialog-backdrop: rgba(12, 28, 20, 0.36);
-  --shadow-emoji: rgba(15, 44, 31, 0.07);
+  /* 4.3 Boundary Radii */
+  /* Large Content Panels and Structural Cards: 12px */
+  --radius-panel: 12px;
+  --radius-card: 12px;
+  /* Buttons, Text Fields, Search Bars, Select Triggers: 8px */
+  --radius-control: 8px;
+  /* Status Tags, Numeric Badges, Pill Filters: Fully rounded (pill shape) */
+  --radius-pill: 9999px;
 
-  /* Component-Specific Tokens */
-  --nav-label: #5c7568;
-  --nav-divider: rgba(26, 67, 49, 0.22);
-  --tip-bg: rgba(255, 255, 255, 0.52);
-  --tip-title: #11231b;
-  --tip-copy: #4c6458;
-  --hero-start: rgba(255, 255, 255, 0.72);
-  --hero-mid: rgba(242, 250, 245, 0.64);
-  --hero-end: rgba(230, 244, 236, 0.58);
-  --hero-inner: rgba(250, 253, 251, 0.88);
-  --hero-copy: #486054;
-  --hero-soft: #597265;
-  --hero-badge: #185a40;
-  --hero-highlight: #1f7a56;
-  --hero-button-bg: #185a40;
-  --hero-button-text: #ffffff;
-  --scan-icon-bg: rgba(24, 90, 64, 0.11);
-  --scan-icon: #185a40;
-  --scan-copy: #4c6458;
-  --food-plate: rgba(24, 90, 64, 0.1);
-  --food-rim: rgba(255, 255, 255, 0.7);
-  --food-surface: rgba(24, 90, 64, 0.1);
-  --food-spark: #185a40;
-  --auth-bg: rgba(255, 255, 255, 0.36);
-  --auth-plate: rgba(24, 90, 64, 0.12);
-  --auth-rim: rgba(255, 255, 255, 0.75);
-  --auth-eyebrow: #185a40;
-  --auth-copy: #4c6458;
-  --auth-perk: #185a40;
-
-  /* Border Radius */
   --radius-xs: 8px;
-  --radius-sm: 11px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 22px;
-  --radius-2xl: 26px;
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 12px;
 
-  /* Spacing Scale */
+  /* Backdrop Blur */
+  --blur-xs: 6px;
+  --blur-sm: 10px;
+  --blur-md: 12px; /* 12px backdrop blur for Topbar */
+  --blur-lg: 16px;
+  --blur-xl: 24px;
+  --glass-saturate: 120%;
+
+  /* Component Tokens */
+  --nav-label: #829189;
+  --nav-divider: #e3e0d3;
+  --tip-bg: #f3f0e6;
+  --tip-title: #113e2e;
+  --tip-copy: #4a5851;
+  --hero-start: #ffffff;
+  --hero-mid: #faf8f2;
+  --hero-end: #f3f0e6;
+  --hero-inner: #ffffff;
+  --hero-copy: #4a5851;
+  --hero-soft: #829189;
+  --hero-badge: #113e2e;
+  --hero-highlight: #649e66;
+  --hero-button-bg: #113e2e;
+  --hero-button-text: #faf8f2;
+  --scan-icon-bg: #e8efe5;
+  --scan-icon: #113e2e;
+  --scan-copy: #4a5851;
+  --food-plate: #e8efe5;
+  --food-rim: #e3e0d3;
+  --food-surface: #f3f0e6;
+  --food-spark: #649e66;
+  --auth-bg: #faf8f2;
+  --auth-plate: #e8efe5;
+  --auth-rim: #e3e0d3;
+  --auth-eyebrow: #113e2e;
+  --auth-copy: #4a5851;
+  --auth-perk: #113e2e;
+
+  /* Spacing */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -158,128 +170,137 @@
   --space-8: 32px;
   --space-10: 40px;
 
-  /* Transitions */
-  --ease-glass: cubic-bezier(0.22, 1, 0.36, 1);
-  --transition-fast: 160ms var(--ease-glass);
-  --transition-base: 240ms var(--ease-glass);
+  /* 5.1 Global Physics Curves & Easing */
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-glass: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --duration-fade: 250ms;
+  --transition-fast: 180ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --transition-base: 250ms cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  /* Background graphics */
+  --app-bg-light: none;
+  --app-bg-dark: none;
+  --app-bg-image: none;
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  /* Full-Application Atmospheric Canvas & Background SVG */
-  --canvas: #08100c;
-  --canvas-deep: #050b08;
-  --app-bg-image: var(--app-bg-dark);
+  /* 3.1 Backgrounds & Surfaces (Dark Mode - Deep Obsidian) */
+  --canvas: #0e1512; /* Deep forest obsidian */
+  --canvas-deep: #080d0b;
+  --surface: #151e1a; /* Elevated charcoal-green base cards & panels */
+  --surface-elevated: #1c2923; /* Muted slate layer (Modals) */
+  --surface-subtle: #18241f; /* Subtle alternating rows */
+  --surface-muted: #1e2e25; /* Shaded evergreen */
 
-  /* Glass Surface System (Dark Mode) */
-  --glass-opacity: 0.56;
-  --glass-opacity-elevated: 0.72;
-  --glass-opacity-subtle: 0.38;
-  --glass-surface: rgba(18, 32, 25, var(--glass-opacity));
-  --glass-surface-elevated: rgba(22, 39, 30, var(--glass-opacity-elevated));
-  --glass-surface-subtle: rgba(24, 43, 33, var(--glass-opacity-subtle));
-  --glass-surface-hover: rgba(28, 50, 38, 0.72);
-  --glass-sidebar: rgba(15, 27, 21, 0.66);
-  --glass-navbar: rgba(14, 25, 19, 0.58);
-  --glass-modal: rgba(16, 29, 22, 0.84);
-  --glass-input: rgba(12, 23, 18, 0.58);
-  --glass-input-focus: rgba(18, 34, 26, 0.86);
-  --glass-dropdown: rgba(16, 30, 23, 0.92);
+  /* Glass/Surface Aliases for backwards compatibility */
+  --glass-opacity: 0.96;
+  --glass-opacity-elevated: 1;
+  --glass-opacity-subtle: 0.75;
+  --glass-surface: #151e1a;
+  --glass-surface-elevated: #1c2923;
+  --glass-surface-subtle: #18241f;
+  --glass-surface-hover: #1d2a24;
+  --glass-sidebar: rgba(14, 21, 18, 0.94);
+  --glass-navbar: rgba(21, 30, 26, 0.85); /* 85% surface background opacity */
+  --glass-modal: #1c2923;
+  --glass-input: #151e1a;
+  --glass-input-focus: #18241f;
+  --glass-dropdown: #151e1a;
 
-  /* Legacy surface aliases */
-  --surface: var(--glass-surface);
-  --surface-soft: var(--glass-surface-subtle);
-  --surface-muted: rgba(168, 220, 188, 0.1);
+  /* 3.2 Borders & Outlines (Dark Mode) */
+  --border: #23332b; /* Deep moss grey */
+  --border-subtle: #23332b;
+  --glass-border: #23332b;
+  --glass-border-subtle: #23332b;
+  --glass-border-strong: #649e66;
+  --glass-highlight-inset: rgba(255, 255, 255, 0.05);
+  --ring: #649e66; /* Active/Focus Rings: Muted Sage */
 
-  /* Borders & Specular Liquid Highlights */
-  --glass-border: rgba(210, 245, 224, 0.12);
-  --glass-border-subtle: rgba(210, 245, 224, 0.08);
-  --glass-border-strong: rgba(114, 209, 158, 0.32);
-  --glass-highlight-inset: rgba(255, 255, 255, 0.11);
-  --glass-rim-bottom: rgba(0, 0, 0, 0.45);
-  --border: rgba(205, 240, 220, 0.11);
+  /* 3.3 Typography Hierarchy (Dark Mode) */
+  --text: #edefea; /* Primary (Headings): Pearl off-white */
+  --text-soft: #9cafa5; /* Secondary (Subtitles): Sage slate */
+  --text-muted: #63776c; /* Tertiary (Placeholders): Muted moss */
 
-  /* Text Hierarchy */
-  --text: #ecf5ef;
-  --text-soft: #9cb5a6;
-  --text-muted: #708a7b;
+  /* 3.4 Interactive Elements & Accents (Dark Mode) */
+  --brand: #649e66; /* Primary Button Fill: Muted Sage */
+  --brand-hover: #74b076; /* Primary Button Hover: Bright sage */
+  --on-brand: #0e1512; /* Primary Button Text: Deep slate obsidian */
+  --brand-soft: #1e2e25; /* Soft Badges & Pills: Shaded evergreen */
+  --brand-glow: rgba(100, 158, 102, 0.3);
+  --accent: #1e2e25;
+  --accent-strong: #649e66;
 
-  /* Brand & Accents (Controlled Emerald & Mint Green) */
-  --brand: #6fd49e;
-  --brand-hover: #8be0b2;
-  --brand-soft: rgba(111, 212, 158, 0.14);
-  --brand-glow: rgba(111, 212, 158, 0.22);
-  --accent: rgba(111, 212, 158, 0.24);
-  --accent-strong: #6fd49e;
-  --on-brand: #081c12;
+  /* Soft Badges & Pills */
+  --badge-pill-bg: #1e2e25;
+  --badge-pill-text: #edefea;
 
-  /* Macronutrient Semantic Accents */
-  --macro-protein: #6fd49e;
-  --macro-carbs: #52b788;
-  --macro-fat: #95d5b2;
-  --peach: rgba(24, 43, 33, 0.52);
-  --orange: #52b788;
+  /* Status Colors */
+  --danger: #e57373; /* Error / Destructive: Soft coral red */
+  --danger-soft: rgba(229, 115, 115, 0.16);
+  --error-bg: #1c2923;
+  --error-text: #e57373;
+  --success: #81c784; /* Success / Validation: Soft mint green */
+  --success-soft: rgba(129, 199, 132, 0.16);
+  --success-text: #81c784;
 
-  /* Status & Semantic Alerts */
-  --danger: #ff877a;
-  --danger-soft: rgba(255, 135, 122, 0.14);
-  --error-bg: rgba(74, 29, 27, 0.66);
-  --error-text: #ffb4ab;
+  /* Nutrition / Macronutrient Accents */
+  --macro-protein: #81c784;
+  --macro-carbs: #649e66;
+  --macro-fat: #9cafa5;
+  --peach: #1e2e25;
+  --orange: #649e66;
 
-  /* Layered Depth & Shadows */
-  --glass-shadow-sm:
-    0 6px 18px -4px rgba(0, 0, 0, 0.38), 0 2px 6px rgba(0, 0, 0, 0.26),
-    inset 0 1px 0 0 var(--glass-highlight-inset);
-  --glass-shadow:
-    0 16px 40px -10px rgba(0, 0, 0, 0.46), 0 4px 12px -2px rgba(0, 0, 0, 0.32),
-    inset 0 1px 0 0 var(--glass-highlight-inset);
-  --glass-shadow-lg:
-    0 24px 56px -12px rgba(0, 0, 0, 0.58), 0 6px 18px -4px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 0 var(--glass-highlight-inset);
-  --glass-shadow-sidebar:
-    0 22px 54px -12px rgba(0, 0, 0, 0.62), 0 4px 14px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.13);
+  /* 4.2 Elevation Shadows */
+  /* Dark Mode Elevation: 20px shadow, 4px downward offset, -2px spread, true black at 45% */
+  --elevation-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.45);
+  --glass-shadow-sm: 0 2px 8px -1px rgba(0, 0, 0, 0.35);
+  --glass-shadow: var(--elevation-shadow);
+  --glass-shadow-lg: var(--elevation-shadow);
+  --glass-shadow-sidebar: 2px 0 16px -2px rgba(0, 0, 0, 0.4);
   --glass-shadow-modal:
-    0 36px 90px -16px rgba(0, 0, 0, 0.75), 0 12px 32px -8px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
-
-  --shadow: var(--glass-shadow);
-  --shadow-button: rgba(111, 212, 158, 0.2);
+    0 16px 40px -4px rgba(0, 0, 0, 0.65), var(--elevation-shadow);
+  --shadow: var(--elevation-shadow);
+  --shadow-button: rgba(100, 158, 102, 0.25);
   --shadow-small: rgba(0, 0, 0, 0.35);
-  --shadow-mobile: rgba(0, 0, 0, 0.5);
-  --shadow-plate: rgba(0, 0, 0, 0.42);
-  --shadow-dialog: rgba(0, 0, 0, 0.72);
-  --dialog-backdrop: rgba(3, 9, 6, 0.65);
+  --shadow-mobile: 0 -4px 16px -2px rgba(0, 0, 0, 0.45);
+  --shadow-plate: rgba(0, 0, 0, 0.3);
+  --dialog-backdrop: rgba(0, 0, 0, 0.65);
   --shadow-emoji: rgba(0, 0, 0, 0.3);
 
-  /* Component-Specific Tokens */
-  --nav-label: #7e9989;
-  --nav-divider: rgba(205, 240, 220, 0.18);
-  --tip-bg: rgba(24, 43, 33, 0.48);
-  --tip-title: #ecf5ef;
-  --tip-copy: #9cb5a6;
-  --hero-start: rgba(24, 45, 34, 0.68);
-  --hero-mid: rgba(19, 36, 27, 0.62);
-  --hero-end: rgba(15, 28, 21, 0.56);
-  --hero-inner: rgba(14, 26, 20, 0.88);
-  --hero-copy: #9cb5a6;
-  --hero-soft: #88a393;
-  --hero-badge: #6fd49e;
-  --hero-highlight: #6fd49e;
-  --hero-button-bg: #6fd49e;
-  --hero-button-text: #081c12;
-  --scan-icon-bg: rgba(111, 212, 158, 0.14);
-  --scan-icon: #6fd49e;
-  --scan-copy: #9cb5a6;
-  --food-plate: rgba(111, 212, 158, 0.13);
-  --food-rim: rgba(255, 255, 255, 0.14);
-  --food-surface: rgba(111, 212, 158, 0.13);
-  --food-spark: #6fd49e;
-  --auth-bg: rgba(16, 30, 23, 0.45);
-  --auth-plate: rgba(111, 212, 158, 0.14);
-  --auth-rim: rgba(255, 255, 255, 0.14);
-  --auth-eyebrow: #6fd49e;
-  --auth-copy: #9cb5a6;
-  --auth-perk: #6fd49e;
+  /* Component Tokens */
+  --nav-label: #63776c;
+  --nav-divider: #23332b;
+  --tip-bg: #1c2923;
+  --tip-title: #edefea;
+  --tip-copy: #9cafa5;
+  --hero-start: #151e1a;
+  --hero-mid: #18241f;
+  --hero-end: #1c2923;
+  --hero-inner: #151e1a;
+  --hero-copy: #9cafa5;
+  --hero-soft: #63776c;
+  --hero-badge: #649e66;
+  --hero-highlight: #74b076;
+  --hero-button-bg: #649e66;
+  --hero-button-text: #0e1512;
+  --scan-icon-bg: #1e2e25;
+  --scan-icon: #649e66;
+  --scan-copy: #9cafa5;
+  --food-plate: #1e2e25;
+  --food-rim: #23332b;
+  --food-surface: #1c2923;
+  --food-spark: #74b076;
+  --auth-bg: #0e1512;
+  --auth-plate: #1e2e25;
+  --auth-rim: #23332b;
+  --auth-eyebrow: #649e66;
+  --auth-copy: #9cafa5;
+  --auth-perk: #649e66;
+
+  /* Background graphics */
+  --app-bg-light: none;
+  --app-bg-dark: none;
+  --app-bg-image: none;
 }

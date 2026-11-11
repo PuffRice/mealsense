@@ -1,10 +1,18 @@
-import type {
-  ButtonHTMLAttributes,
-  HTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
+import {
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  forwardRef,
 } from "react";
+import { motion, type HTMLMotionProps } from "framer-motion";
+import {
+  buttonMotion,
+  cardInteractiveMotion,
+  modalMotionVariants,
+  toastSlideVariants,
+} from "./motion";
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "ghost" | "danger";
@@ -12,24 +20,35 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   icon?: ReactNode;
 };
 
-export function GlassButton({
-  variant = "primary",
-  size = "md",
-  icon,
-  className = "",
-  children,
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      className={`button glass-button button--${variant} button--${size} ${className}`.trim()}
-      {...props}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
+export const GlassButton = forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      variant = "primary",
+      size = "md",
+      icon,
+      className = "",
+      children,
+      disabled,
+      ...props
+    },
+    ref,
+  ) => {
+    return (
+      <motion.button
+        ref={ref}
+        disabled={disabled}
+        whileHover={disabled ? undefined : buttonMotion.whileHover}
+        whileTap={disabled ? undefined : buttonMotion.whileTap}
+        className={`button glass-button button--${variant} button--${size} ${className}`.trim()}
+        {...(props as HTMLMotionProps<"button">)}
+      >
+        {icon}
+        {children}
+      </motion.button>
+    );
+  },
+);
+GlassButton.displayName = "GlassButton";
 
 export const Button = GlassButton;
 
@@ -59,6 +78,19 @@ export function GlassPanel({
     .filter(Boolean)
     .join(" ");
 
+  if (interactive) {
+    return (
+      <motion.div
+        whileHover={cardInteractiveMotion.whileHover}
+        whileTap={cardInteractiveMotion.whileTap}
+        className={modifiers}
+        {...(props as HTMLMotionProps<"div">)}
+      >
+        {children}
+      </motion.div>
+    );
+  }
+
   return (
     <Tag className={modifiers} {...props}>
       {children}
@@ -84,6 +116,19 @@ export function GlassCard({
   ]
     .filter(Boolean)
     .join(" ");
+
+  if (interactive) {
+    return (
+      <motion.section
+        whileHover={cardInteractiveMotion.whileHover}
+        whileTap={cardInteractiveMotion.whileTap}
+        className={modifiers}
+        {...(props as HTMLMotionProps<"section">)}
+      >
+        {children}
+      </motion.section>
+    );
+  }
 
   return (
     <section className={modifiers} {...props}>
@@ -130,22 +175,31 @@ export function GlassModal({
   children: ReactNode;
 }) {
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
       className="modal-backdrop glass-modal-backdrop"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div
+      <motion.div
+        variants={modalMotionVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
         className={`modal glass-modal ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {children}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -154,7 +208,7 @@ export function Badge({
   tone = "green",
 }: {
   children: ReactNode;
-  tone?: "green" | "peach" | "neutral";
+  tone?: "green" | "peach" | "neutral" | "danger";
 }) {
   return <span className={`badge badge--${tone}`}>{children}</span>;
 }
@@ -271,5 +325,75 @@ export function Progress({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * 6. UI Component Transformation Checklist:
+ * Alerts & Toast Notices:
+ * Pin these as floating containers with elevated surface backgrounds.
+ * Add a 3-pixel wide left-hand accent border using the respective status color (Error/Success),
+ * and animate their entry via a slide-in trajectory from the top right quadrant.
+ */
+export function ToastNotice({
+  type = "info",
+  message,
+  onDismiss,
+}: {
+  type?: "error" | "success" | "info";
+  message: string;
+  onDismiss?: () => void;
+}) {
+  return (
+    <motion.aside
+      role="status"
+      variants={toastSlideVariants}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className={`floating-toast floating-toast--${type}`}
+      onClick={onDismiss}
+    >
+      <div className="floating-toast__content">{message}</div>
+    </motion.aside>
+  );
+}
+
+/**
+ * 5.2.E Toggle Switch
+ * Thumb Toggles: The circular handle must compress slightly along the horizontal axis
+ * during the drag or toggle action before settling into its final position.
+ */
+export function ToggleSwitch({
+  checked,
+  onChange,
+  label,
+  id,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: string;
+  id?: string;
+}) {
+  return (
+    <label htmlFor={id} className="toggle-switch-wrapper">
+      {label && <span className="toggle-switch__label">{label}</span>}
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`toggle-track ${checked ? "toggle-track--active" : ""}`}
+      >
+        <motion.span
+          className="toggle-thumb"
+          layout
+          transition={{ type: "spring", stiffness: 500, damping: 25 }}
+          whileTap={{ scaleX: 1.25, scaleY: 0.85 }}
+          animate={{ scale: 1 }}
+        />
+      </button>
+    </label>
   );
 }

@@ -7,6 +7,7 @@ import {
   Sun,
   Trash2,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { Badge, GlassButton, GlassCard } from "../../design/ui";
 import type { User } from "../../lib/types";
 
@@ -39,15 +40,19 @@ export function Settings({
             </span>
             <div>
               <h2>Appearance</h2>
-              <p>Choose the Liquid Glass theme that feels most comfortable.</p>
+              <p>
+                Choose the nature-inspired theme that feels most comfortable.
+              </p>
             </div>
           </div>
 
           <div className="theme-selector" role="radiogroup" aria-label="Theme">
-            <button
+            <motion.button
               type="button"
               role="radio"
               aria-checked={!dark}
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.99 }}
               className={`theme-option ${!dark ? "theme-option--active" : ""}`}
               onClick={() => {
                 if (dark) onToggleTheme();
@@ -57,9 +62,9 @@ export function Settings({
                 <Sun size={19} />
               </div>
               <div className="theme-option__body">
-                <strong>Light Liquid Glass</strong>
+                <strong>Light Mode (Warm Slate)</strong>
                 <small>
-                  Soft atmospheric mint & translucent white surfaces
+                  Warm porcelain canvas, pure white panels & Deep Forest Green
                 </small>
               </div>
               {!dark && (
@@ -67,12 +72,14 @@ export function Settings({
                   <Check size={12} /> Active
                 </Badge>
               )}
-            </button>
+            </motion.button>
 
-            <button
+            <motion.button
               type="button"
               role="radio"
               aria-checked={dark}
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.99 }}
               className={`theme-option ${dark ? "theme-option--active" : ""}`}
               onClick={() => {
                 if (!dark) onToggleTheme();
@@ -82,9 +89,9 @@ export function Settings({
                 <Moon size={19} />
               </div>
               <div className="theme-option__body">
-                <strong>Dark Liquid Glass</strong>
+                <strong>Dark Mode (Deep Obsidian)</strong>
                 <small>
-                  Deep forest charcoal & luminous emerald glass surfaces
+                  Deep forest obsidian canvas, elevated charcoal & Muted Sage
                 </small>
               </div>
               {dark && (
@@ -92,7 +99,7 @@ export function Settings({
                   <Check size={12} /> Active
                 </Badge>
               )}
-            </button>
+            </motion.button>
           </div>
         </GlassCard>
 

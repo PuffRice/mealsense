@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { WifiOff } from "lucide-react";
 import { Layout, type Page } from "./components/Layout";
+import { pageRevealVariants } from "./design/motion";
 import { AuthPage } from "./features/auth/AuthPage";
 import { Overview } from "./features/overview/Overview";
 import { MealsPage } from "./features/meals/MealsPage";
@@ -35,7 +37,6 @@ export default function App() {
   const [dark, setDark] = useState(
     () => localStorage.getItem("mealsense-theme") === "dark",
   );
-  const [bgVersion, setBgVersion] = useState(() => Date.now());
   const [online, setOnline] = useState(navigator.onLine);
   const [dataError, setDataError] = useState("");
   const [lastSynced, setLastSynced] = useState("");
@@ -43,28 +44,6 @@ export default function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("mealsense-theme", dark ? "dark" : "light");
   }, [dark]);
-  useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty(
-      "--app-bg-light",
-      `url("/bg-light.svg?v=${bgVersion}"), url("/bg.svg?v=${bgVersion}")`,
-    );
-    root.style.setProperty(
-      "--app-bg-dark",
-      `url("/bg-dark.svg?v=${bgVersion}"), url("/bg.svg?v=${bgVersion}")`,
-    );
-  }, [bgVersion]);
-  useEffect(() => {
-    if (import.meta.hot) {
-      const handleSvgUpdate = (payload: { timestamp?: number }) => {
-        setBgVersion(payload?.timestamp || Date.now());
-      };
-      import.meta.hot.on("public-svg-updated", handleSvgUpdate);
-      return () => {
-        import.meta.hot?.off("public-svg-updated", handleSvgUpdate);
-      };
-    }
-  }, []);
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
     window.addEventListener("online", update);
@@ -218,6 +197,8 @@ export default function App() {
           setUser(active);
           void refresh(active);
         }}
+        dark={dark}
+        onToggleTheme={() => setDark(!dark)}
       />
     );
   return (
@@ -231,71 +212,101 @@ export default function App() {
         dark={dark}
         onToggleTheme={() => setDark(!dark)}
       >
-        {!online && (
-          <div className="offline-banner">
-            <WifiOff size={17} /> You're offline. Showing saved data
-            {lastSynced ? ` from ${new Date(lastSynced).toLocaleString()}` : ""}
-            . Meal drafts stay on this device; saving needs a connection.
-          </div>
-        )}
-        {dataError && (
-          <div className="error-banner" role="alert">
-            {dataError}{" "}
-            <button onClick={() => void refresh(user)}>Retry</button>
-          </div>
-        )}
-        {page === "overview" && (
-          <Overview
-            user={user}
-            daily={daily}
-            weekly={weekly}
-            meals={meals}
-            onAdd={() => setEditing("new")}
-            onMeals={() => setPage("meals")}
-            onInsights={() => setPage("insights")}
-          />
-        )}
-        {page === "meals" && (
-          <MealsPage
-            meals={meals}
-            timezone={user.profile.timezone}
-            onAdd={() => setEditing("new")}
-            onEdit={setEditing}
-            onDelete={(meal) => void deleteMeal(meal)}
-          />
-        )}
-        {page === "insights" && <Insights user={user} weekly={weekly} />}
-        {page === "profile" && (
-          <ProfilePage
-            user={user}
-            onUpdate={(active) => {
-              setUser(active);
-              void refresh(active);
+        <AnimatePresence>
+          {!online && (
+            <motion.div
+              initial={{ x: 80, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 60, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 350, damping: 26 }}
+              className="offline-banner"
+            >
+              <WifiOff size={17} /> You're offline. Showing saved data
+              {lastSynced
+                ? ` from ${new Date(lastSynced).toLocaleString()}`
+                : ""}
+              . Meal drafts stay on this device; saving needs a connection.
+            </motion.div>
+          )}
+          {dataError && (
+            <motion.div
+              initial={{ x: 80, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 60, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 350, damping: 26 }}
+              className="error-banner"
+              role="alert"
+            >
+              {dataError}{" "}
+              <button onClick={() => void refresh(user)}>Retry</button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={page}
+            variants={pageRevealVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            {page === "overview" && (
+              <Overview
+                user={user}
+                daily={daily}
+                weekly={weekly}
+                meals={meals}
+                onAdd={() => setEditing("new")}
+                onMeals={() => setPage("meals")}
+                onInsights={() => setPage("insights")}
+              />
+            )}
+            {page === "meals" && (
+              <MealsPage
+                meals={meals}
+                timezone={user.profile.timezone}
+                onAdd={() => setEditing("new")}
+                onEdit={setEditing}
+                onDelete={(meal) => void deleteMeal(meal)}
+              />
+            )}
+            {page === "insights" && <Insights user={user} weekly={weekly} />}
+            {page === "profile" && (
+              <ProfilePage
+                user={user}
+                onUpdate={(active) => {
+                  setUser(active);
+                  void refresh(active);
+                }}
+              />
+            )}
+            {page === "settings" && (
+              <Settings
+                user={user}
+                onDelete={() => void deleteAccount()}
+                dark={dark}
+                onToggleTheme={() => setDark(!dark)}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </Layout>
+      <AnimatePresence>
+        {editing && (
+          <MealEditor
+            meal={editing === "new" ? null : editing}
+            userId={user.id}
+            foods={foods}
+            onClose={() => setEditing(null)}
+            onFoodCreated={(food) => setFoods((current) => [...current, food])}
+            onSaved={async () => {
+              await refresh(user);
+              setEditing(null);
             }}
           />
         )}
-        {page === "settings" && (
-          <Settings
-            user={user}
-            onDelete={() => void deleteAccount()}
-            dark={dark}
-            onToggleTheme={() => setDark(!dark)}
-          />
-        )}
-      </Layout>
-      {editing && (
-        <MealEditor
-          meal={editing === "new" ? null : editing}
-          userId={user.id}
-          foods={foods}
-          onClose={() => setEditing(null)}
-          onFoodCreated={(food) => setFoods((current) => [...current, food])}
-          onSaved={async () => {
-            await refresh(user);
-            setEditing(null);
-          }}
-        />
-      )}
+      </AnimatePresence>
     </>
   );
 }

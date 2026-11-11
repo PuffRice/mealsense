@@ -11,6 +11,7 @@ import {
   Sun,
   UserRound,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { GlassButton, GlassNavbar, GlassSidebar } from "../design/ui";
 import type { User } from "../lib/types";
 
@@ -82,7 +83,12 @@ export function Layout({
                 </span>
                 <span className="nav-item__text">{label}</span>
                 {active && (
-                  <span className="nav-item__indicator" aria-hidden="true" />
+                  <motion.span
+                    layoutId="sidebar-active-indicator"
+                    className="nav-item__indicator-pill"
+                    transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                    aria-hidden="true"
+                  />
                 )}
               </button>
             );
@@ -170,15 +176,17 @@ export function Layout({
           </nav>
 
           <div className="topbar__actions">
-            <button
+            <motion.button
               type="button"
-              className="topbar__icon-btn topbar__mobile-only"
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.92 }}
+              className="topbar__icon-btn"
               title={dark ? "Switch to light mode" : "Switch to dark mode"}
               aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
               onClick={onToggleTheme}
             >
               {dark ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            </motion.button>
             <button
               type="button"
               className="topbar__icon-btn help-button"
@@ -225,6 +233,13 @@ export function Layout({
           >
             <Icon size={19} />
             <span>{label}</span>
+            {page === id && (
+              <motion.span
+                layoutId="mobile-nav-indicator"
+                className="mobile-nav__pill"
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
+              />
+            )}
           </button>
         ))}
         <button
@@ -234,6 +249,13 @@ export function Layout({
         >
           <UserRound size={19} />
           <span>Profile</span>
+          {page === "profile" && (
+            <motion.span
+              layoutId="mobile-nav-indicator"
+              className="mobile-nav__pill"
+              transition={{ type: "spring", stiffness: 350, damping: 28 }}
+            />
+          )}
         </button>
       </nav>
     </div>

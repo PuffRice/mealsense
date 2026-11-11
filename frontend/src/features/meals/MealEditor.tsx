@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Camera, Check, Plus, Search, Trash2, X } from "lucide-react";
 import {
   Badge,
@@ -7,6 +8,7 @@ import {
   GlassModal,
   SelectField,
 } from "../../design/ui";
+import { modalMotionVariants } from "../../design/motion";
 import { foodsApi, mealsApi, uploadMealImage } from "../../lib/api";
 import { loadDraft, removeDraft, saveDraft } from "../../lib/offline";
 import type { Candidate, Food, Meal, MealInput } from "../../lib/types";
@@ -315,31 +317,39 @@ export function MealEditor({
               aria-label="Search foods"
             />
           </div>
-          {query && (
-            <div className="food-results">
-              {filtered.map((food) => (
-                <button
-                  type="button"
-                  key={food.id}
-                  onClick={() => addFood(food)}
-                >
-                  <span>
-                    {food.name}
-                    <small>
-                      {food.is_sample ? "Sample estimate" : food.source} ·{" "}
-                      {food.kcal_100g === null
-                        ? "Nutrition pending"
-                        : `${Math.round(Number(food.kcal_100g))} kcal / 100 g`}
-                    </small>
-                  </span>
-                  <Plus size={17} />
-                </button>
-              ))}
-              {filtered.length === 0 && (
-                <p>No matching food. Add your own below.</p>
-              )}
-            </div>
-          )}
+          <AnimatePresence>
+            {query && (
+              <motion.div
+                variants={modalMotionVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="food-results"
+              >
+                {filtered.map((food) => (
+                  <button
+                    type="button"
+                    key={food.id}
+                    onClick={() => addFood(food)}
+                  >
+                    <span>
+                      {food.name}
+                      <small>
+                        {food.is_sample ? "Sample estimate" : food.source} ·{" "}
+                        {food.kcal_100g === null
+                          ? "Nutrition pending"
+                          : `${Math.round(Number(food.kcal_100g))} kcal / 100 g`}
+                      </small>
+                    </span>
+                    <Plus size={17} />
+                  </button>
+                ))}
+                {filtered.length === 0 && (
+                  <p>No matching food. Add your own below.</p>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
           {entries.map((entry) => {
             const food = foods.find((item) => item.id === entry.food_id);
             return (

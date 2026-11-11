@@ -108,7 +108,6 @@ export function ProfilePage({
     } finally {
       setSaving(false);
     }
-
   }
 
   async function uploadPicture(event: React.ChangeEvent<HTMLInputElement>) {
@@ -126,7 +125,9 @@ export function ProfilePage({
       setMessage("Profile picture updated.");
     } catch (cause) {
       setMessage(
-        cause instanceof Error ? cause.message : "Could not upload profile picture.",
+        cause instanceof Error
+          ? cause.message
+          : "Could not upload profile picture.",
       );
     } finally {
       setPictureUploading(false);

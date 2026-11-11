@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
 import {
   CalendarDays,
   Pencil,
@@ -68,7 +69,15 @@ export function MealsPage({
                 className={filter === value ? "filter-tabs__active" : ""}
                 onClick={() => setFilter(value)}
               >
-                {value}
+                {filter === value && (
+                  <motion.span
+                    layoutId="filter-tabs-pill"
+                    className="filter-tabs__pill"
+                    transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                    aria-hidden="true"
+                  />
+                )}
+                <span className="filter-tab__label">{value}</span>
               </button>
             ))}
           </div>
