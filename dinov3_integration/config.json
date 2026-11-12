@@ -1,0 +1,28 @@
+{
+  "classifier": "DINOv3",
+  "dinov3_model_path": "d:\\CS\\Hackathon\\Mealsense_Models\\dinov3_offline_model",
+  "image_size": 224,
+  "dish_to_idx": {
+    "bakorkhani": 0,
+    "beguni": 1,
+    "biriyani": 2,
+    "chickpeas": 3,
+    "egg_omlete": 4,
+    "fuchka": 5,
+    "haleem": 6,
+    "hilsha_fish": 7,
+    "kacchi": 8
+  },
+  "idx_to_dish": {
+    "0": "bakorkhani",
+    "1": "beguni",
+    "2": "biriyani",
+    "3": "chickpeas",
+    "4": "egg_omlete",
+    "5": "fuchka",
+    "6": "haleem",
+    "7": "hilsha_fish",
+    "8": "kacchi"
+  },
+  "best_validation_macro_f1": 0.8724703816509107
+}
