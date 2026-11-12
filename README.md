@@ -31,9 +31,28 @@ Open `http://127.0.0.1:5173`. Create an account, add a food with reference value
 - Server-side calorie/macronutrient calculation from reference values and confirmed grams. Meal items keep nutrient snapshots.
 - Daily dashboard and seven-day history, with user timezone boundaries.
 - Private image upload, owner-checked image access, and account deletion.
+- Meal-history sharing: a doctor without an account can request access using your email or phone; you approve, deny, or revoke it from the Sharing page, and approved doctors get 72 hours of read-only meal history and analytics (never photos, notes, or health metrics).
 - Installable PWA shell, offline read snapshot, locally saved text draft, responsive layout, and light/dark theme.
 
 Food values entered by users are marked `User supplied`. Verify them before relying on them. Nutrition values are estimates, not medical advice.
+
+## Doctor access
+
+Doctors have no accounts and do not need one. They open `/doctor` in the frontend,
+enter the patient's email or phone, and the patient receives an in-app request on the
+Sharing page to approve or deny. Approval generates a private access code that grants
+read-only access for 72 hours, after which it expires automatically; the patient can
+also revoke it at any time. The doctor copies the access code so they can reopen the
+page later without repeating the request.
+
+While access is active the doctor sees the meal history as a list plus analytics:
+most-consumed foods, how often each food appears, monthly summaries, and any custom
+date range. The view never exposes meal photos, personal notes, or health metrics
+(weight, BMI, goals). An expired code answers as expired, and unmatched identifiers
+receive the same generic reply, so the form cannot be used to confirm who has an
+account.
+
+The patient's own meal-history endpoint also accepts `from` and `to` date parameters.
 
 ## Still to decide or build
 

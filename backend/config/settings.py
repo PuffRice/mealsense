@@ -85,5 +85,8 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
     'DEFAULT_THROTTLE_CLASSES': ['rest_framework.throttling.AnonRateThrottle', 'rest_framework.throttling.UserRateThrottle'],
-    'DEFAULT_THROTTLE_RATES': {'anon': '30/hour', 'user': '300/hour'},
+    'DEFAULT_THROTTLE_RATES': {'anon': '30/hour', 'user': '300/hour',
+                               # Public doctor portal scopes replace the tight
+                               # default anon limit on their own endpoints.
+                               'doctor_request': '20/hour', 'doctor_view': '1200/hour'},
 }

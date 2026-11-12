@@ -30,6 +30,7 @@ export function ProfilePage({
   onUpdate: (user: User) => void;
 }) {
   const [name, setName] = useState(user.display_name);
+  const [phone, setPhone] = useState(user.profile.phone || "");
   const [gender, setGender] = useState<Gender>(user.profile.gender || "");
   const [dob, setDob] = useState(user.profile.date_of_birth || "");
   const [timezone, setTimezone] = useState(user.profile.timezone);
@@ -83,6 +84,7 @@ export function ProfilePage({
           profile: {
             ...user.profile,
             timezone,
+            phone: phone.trim() || null,
             gender,
             date_of_birth: dob || null,
             height_cm:
@@ -211,6 +213,15 @@ export function ProfilePage({
               />
               <Field label="Email address" value={user.email} disabled />
             </div>
+
+            <Field
+              label="Phone number"
+              type="tel"
+              value={phone}
+              placeholder="8801712345678"
+              onChange={(event) => setPhone(event.target.value)}
+              hint="Optional. Only used so a doctor can find your account to request access. Digits with country code."
+            />
 
             <div className="settings-card__fields">
               <SelectField

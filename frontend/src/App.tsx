@@ -8,9 +8,10 @@ import { Overview } from "./features/overview/Overview";
 import { MealsPage } from "./features/meals/MealsPage";
 import { MealEditor } from "./features/meals/MealEditor";
 import { Insights } from "./features/insights/Insights";
+import { SharingPage } from "./features/sharing/SharingPage";
 import { ProfilePage } from "./features/profile/ProfilePage";
 import { Settings } from "./features/settings/Settings";
-import { auth, foodsApi, mealsApi } from "./lib/api";
+import { auth, doctorAccessApi, foodsApi, mealsApi } from "./lib/api";
 import { clearLocalData, loadSnapshot, saveSnapshot } from "./lib/offline";
 import type { Daily, Food, Meal, User } from "./lib/types";
 
@@ -40,6 +41,7 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [dataError, setDataError] = useState("");
   const [lastSynced, setLastSynced] = useState("");
+  const [pendingRequests, setPendingRequests] = useState(0);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("mealsense-theme", dark ? "dark" : "light");
@@ -114,6 +116,22 @@ export default function App() {
     window.addEventListener("online", sync);
     return () => window.removeEventListener("online", sync);
   }, [user, refresh]);
+  useEffect(() => {
+    if (!user) return;
+    const checkRequests = () => {
+      doctorAccessApi
+        .list()
+        .then((requests) =>
+          setPendingRequests(
+            requests.filter((request) => request.status === "pending").length,
+          ),
+        )
+        .catch(() => {});
+    };
+    checkRequests();
+    const timer = window.setInterval(checkRequests, 30000);
+    return () => window.clearInterval(timer);
+  }, [user, page]);
   async function logout() {
     if (!online) {
       window.alert("Connect to the internet to securely log out.");
@@ -211,6 +229,7 @@ export default function App() {
         onLogout={() => void logout()}
         dark={dark}
         onToggleTheme={() => setDark(!dark)}
+        sharingBadge={pendingRequests}
       >
         <AnimatePresence>
           {!online && (
@@ -272,6 +291,22 @@ export default function App() {
               />
             )}
             {page === "insights" && <Insights user={user} weekly={weekly} />}
+            {page === "sharing" && (
+              <SharingPage
+                onDecided={() => {
+                  doctorAccessApi
+                    .list()
+                    .then((requests) =>
+                      setPendingRequests(
+                        requests.filter(
+                          (request) => request.status === "pending",
+                        ).length,
+                      ),
+                    )
+                    .catch(() => {});
+                }}
+              />
+            )}
             {page === "profile" && (
               <ProfilePage
                 user={user}

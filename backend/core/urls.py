@@ -17,4 +17,10 @@ urlpatterns = [
     path('recognitions/', views.RecognitionView.as_view()),
     path('recognitions/<uuid:pk>/', views.RecognitionDetailView.as_view()),
     path('images/<uuid:pk>/', views.PrivateImageView.as_view()),
+    path('doctor-access/request/', views.DoctorAccessRequestCreateView.as_view()),
+    path('doctor-access/requests/', views.DoctorAccessRequestListView.as_view()),
+    path('doctor-access/requests/<uuid:pk>/decision/', views.DoctorAccessDecisionView.as_view()),
+    path('doctor-access/view/status/', views.DoctorAccessStatusView.as_view()),
+    path('doctor-access/view/history/', views.DoctorAccessHistoryView.as_view()),
+    path('doctor-access/view/analytics/', views.DoctorAccessAnalyticsView.as_view()),
 ]

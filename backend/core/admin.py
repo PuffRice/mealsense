@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 from .models import (
+    DoctorAccessRequest,
     Food,
     FoodAlias,
     FoodImage,
@@ -172,3 +173,14 @@ class GoalProgressAdmin(admin.ModelAdmin):
 class MediaDeletionJobAdmin(admin.ModelAdmin):
     list_display = ('storage_key', 'attempts', 'requested_at', 'completed_at', 'last_error_code')
     readonly_fields = ('storage_key', 'attempts', 'requested_at', 'completed_at', 'last_error_code')
+
+
+@admin.register(DoctorAccessRequest)
+class DoctorAccessRequestAdmin(admin.ModelAdmin):
+    list_display = ('patient', 'doctor_name', 'identifier_type', 'identifier', 'status',
+                    'created_at', 'approved_at', 'expires_at')
+    list_filter = ('status', 'identifier_type')
+    search_fields = ('patient__email', 'doctor_name', 'identifier')
+    readonly_fields = ('created_at', 'updated_at', 'view_token')
+    raw_id_fields = ('patient',)
+    autocomplete_fields = ()

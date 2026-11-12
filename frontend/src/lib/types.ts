@@ -3,6 +3,7 @@ export type Profile = {
   profile_picture_url?: string | null;
   timezone: string;
   units: string;
+  phone?: string | null;
   gender?: Gender;
   date_of_birth?: string | null;
   height_cm?: string | number | null;
@@ -106,4 +107,88 @@ export type MealInput = {
   }[];
   version?: number;
   operation_id?: string;
+};
+export type DoctorAccessRequest = {
+  id: string;
+  doctor_name: string;
+  identifier_type: "email" | "phone";
+  identifier: string;
+  status: "pending" | "approved" | "denied" | "revoked";
+  created_at: string;
+  approved_at: string | null;
+  expires_at: string | null;
+  denied_at: string | null;
+  revoked_at: string | null;
+};
+export type DoctorStatus = {
+  status: "pending" | "approved" | "denied" | "revoked" | "expired";
+  active: boolean;
+  created_at: string;
+  patient_name?: string;
+  patient_timezone?: string;
+  approved_at?: string;
+  expires_at?: string;
+};
+export type DoctorMealItem = {
+  food_name: string;
+  grams: string;
+  kcal: string;
+  protein_g: string;
+  carbs_g: string;
+  fat_g: string;
+  nutrition_source_snapshot: string;
+};
+export type DoctorMeal = {
+  id: string;
+  eaten_at: string;
+  local_date: string;
+  meal_type: string;
+  items: DoctorMealItem[];
+  totals: MacroTotals;
+};
+export type DoctorHistory = {
+  count: number;
+  limit: number;
+  offset: number;
+  meals: DoctorMeal[];
+};
+export type DoctorFoodStat = {
+  food_name: string;
+  times: number;
+  grams: string;
+  kcal: string;
+};
+export type DoctorMonthly = {
+  month: string;
+  meals: number;
+  item_count: number;
+  kcal: string;
+  protein_g: string;
+  carbs_g: string;
+  fat_g: string;
+  grams: string;
+};
+export type DoctorMealTypeStat = {
+  meal_type: string;
+  meals: number;
+  item_count: number;
+  kcal: string;
+  grams: string;
+};
+export type DoctorAnalytics = {
+  range: { from: string; to: string };
+  totals: MacroTotals & { items: number; grams: string };
+  meals_logged: number;
+  items_logged: number;
+  logged_days: number;
+  avg_kcal_per_logged_day: string;
+  most_consumed: (DoctorFoodStat & {
+    protein_g: string;
+    carbs_g: string;
+    fat_g: string;
+  })[];
+  food_frequency: DoctorFoodStat[];
+  monthly: DoctorMonthly[];
+  daily: (Omit<DoctorMonthly, "month"> & { day: string })[];
+  by_meal_type: DoctorMealTypeStat[];
 };

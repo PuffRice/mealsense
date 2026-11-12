@@ -1,6 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import base64
 import json
 import logging
@@ -13,15 +13,16 @@ from hashlib import sha256
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q, Sum
+from django.db.models.functions import TruncDay, TruncMonth
 from django.utils import timezone as django_timezone
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import ValidationError
 from rest_framework.exceptions import APIException
-from .models import (Food, FoodImage, FoodNutrition, FoodPrediction, FoodServing,
+from .models import (DoctorAccessRequest, Food, FoodImage, FoodNutrition, FoodPrediction, FoodServing,
                      IdempotencyRecord, Meal, MealItem, MediaDeletionJob,
                      NutrientTarget, NutritionGoal, NutritionRecord,
-                     RecognitionResult)
+                     Profile, RecognitionResult, User)
 from .recognition_labels import model_search_names
 
 logger = logging.getLogger(__name__)
@@ -455,3 +456,253 @@ def date_window(date_text, timezone_name):
         tz = timezone.utc
     start = datetime.combine(date, time.min, tzinfo=tz)
     return start.astimezone(timezone.utc), (start + timedelta(days=1)).astimezone(timezone.utc)
+
+
+# --- Doctor meal-history access ---
+# Doctors have no accounts: a patient approves a request, then the request's
+# view token grants read-only history/analytics for a bounded window.
+DOCTOR_ACCESS_HOURS = 72
+DOCTOR_ANALYTICS_MAX_DAYS = 366
+DOCTOR_HISTORY_MAX_LIMIT = 500
+# Identical for matched and unmatched identifiers so the public page cannot be
+# used to confirm whether an email or phone has a MealSense account.
+DOCTOR_REQUEST_PENDING_MESSAGE = (
+    'If the patient has a MealSense account, your request appears in their app '
+    'for approval. Double-check the email or phone if nothing arrives.'
+)
+_EMAIL_PATTERN = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+_PHONE_PATTERN = re.compile(r'^\d{6,15}$')
+
+
+def normalize_phone(raw_value):
+    digits = re.sub(r'\D', '', str(raw_value or ''))
+    if not _PHONE_PATTERN.fullmatch(digits):
+        raise ValidationError({'identifier': 'Enter a valid email address or phone number.'})
+    return digits
+
+
+def resolve_patient(identifier):
+    """Return (identifier_type, normalized_identifier, patient_user_or_None)."""
+    text = str(identifier or '').strip()
+    if '@' in text:
+        if len(text) > 254 or not _EMAIL_PATTERN.fullmatch(text):
+            raise ValidationError({'identifier': 'Enter a valid email address or phone number.'})
+        email = text.lower()
+        return 'email', email, User.objects.filter(email__iexact=email).first()
+    digits = normalize_phone(text)
+    profile = Profile.objects.filter(phone=digits).select_related('user').first()
+    return 'phone', digits, profile.user if profile else None
+
+
+def patient_zone(timezone_name):
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return timezone.utc
+
+
+def patient_timezone(user):
+    name = Profile.objects.filter(user=user).values_list('timezone', flat=True).first()
+    return patient_zone(name or 'UTC')
+
+
+def create_doctor_access_request(patient, doctor_name, identifier_type, identifier):
+    """Create or reuse a pending request; returns (request, created)."""
+    doctor_name = str(doctor_name).strip()[:120]
+    with transaction.atomic():
+        existing = (DoctorAccessRequest.objects.select_for_update()
+                    .filter(patient=patient, identifier_type=identifier_type, identifier=identifier,
+                            status=DoctorAccessRequest.STATUS_PENDING, doctor_name__iexact=doctor_name)
+                    .order_by('-created_at').first())
+        if existing:
+            return existing, False
+        request = DoctorAccessRequest.objects.create(
+            patient=patient, doctor_name=doctor_name,
+            identifier_type=identifier_type, identifier=identifier)
+        return request, True
+
+
+def doctor_request_for_token(token):
+    if not token:
+        return None
+    return (DoctorAccessRequest.objects.filter(view_token=str(token).strip()[:64])
+            .select_related('patient').first())
+
+
+@transaction.atomic
+def decide_doctor_access_request(access_request, action, user):
+    """Apply an approve/deny/revoke decision made by the patient in their app."""
+    locked = DoctorAccessRequest.objects.select_for_update().get(pk=access_request.pk, patient=user)
+    now = django_timezone.now()
+    expired = locked.status == DoctorAccessRequest.STATUS_APPROVED and not locked.is_active()
+    if action == 'approve':
+        if locked.status not in (DoctorAccessRequest.STATUS_PENDING, DoctorAccessRequest.STATUS_DENIED,
+                                 DoctorAccessRequest.STATUS_REVOKED) and not expired:
+            raise ValidationError({'action': 'This request can no longer be approved.'})
+        locked.status = DoctorAccessRequest.STATUS_APPROVED
+        locked.approved_at = now
+        locked.denied_at = None
+        locked.revoked_at = None
+        locked.expires_at = now + timedelta(hours=DOCTOR_ACCESS_HOURS)
+    elif action == 'deny':
+        if locked.status != DoctorAccessRequest.STATUS_PENDING:
+            raise ValidationError({'action': 'Only a pending request can be denied.'})
+        locked.status = DoctorAccessRequest.STATUS_DENIED
+        locked.denied_at = now
+        locked.expires_at = None
+    elif action == 'revoke':
+        if locked.status != DoctorAccessRequest.STATUS_APPROVED or not locked.is_active():
+            raise ValidationError({'action': 'Only an active share can be revoked.'})
+        locked.status = DoctorAccessRequest.STATUS_REVOKED
+        locked.revoked_at = now
+        locked.expires_at = now
+    else:
+        raise ValidationError({'action': 'Choose approve, deny, or revoke.'})
+    locked.save()
+    return locked
+
+
+def doctor_request_status_payload(access_request):
+    data = {'status': access_request.effective_status(), 'active': access_request.is_active(),
+            'created_at': access_request.created_at}
+    if access_request.is_active():
+        patient = access_request.patient
+        data.update({
+            'patient_name': patient.display_name or patient.username,
+            'patient_timezone': patient_timezone(patient).key,
+            'approved_at': access_request.approved_at,
+            'expires_at': access_request.expires_at,
+        })
+    return data
+
+
+def _dec(value):
+    return value if isinstance(value, Decimal) else Decimal('0')
+
+
+def doctor_meal_payload(meal, tz):
+    items = list(meal.items.all())
+    totals = {
+        'kcal': sum((_dec(item.kcal) for item in items), Decimal('0')),
+        'protein_g': sum((_dec(item.protein_g) for item in items), Decimal('0')),
+        'carbs_g': sum((_dec(item.carbs_g) for item in items), Decimal('0')),
+        'fat_g': sum((_dec(item.fat_g) for item in items), Decimal('0')),
+    }
+    local = django_timezone.localtime(meal.eaten_at, tz)
+    return {
+        'id': str(meal.id),
+        'eaten_at': meal.eaten_at,
+        'local_date': local.date().isoformat(),
+        'meal_type': meal.meal_type,
+        # Photos, notes, and health metrics are never shared with doctors.
+        'items': [{'food_name': item.food_name, 'grams': str(item.grams), 'kcal': str(item.kcal),
+                   'protein_g': str(item.protein_g), 'carbs_g': str(item.carbs_g), 'fat_g': str(item.fat_g),
+                   'nutrition_source_snapshot': item.nutrition_source_snapshot}
+                  for item in items],
+        'totals': {name: str(value) for name, value in totals.items()},
+    }
+
+
+def date_range_window(from_text=None, to_text=None, timezone_name='UTC', max_days=None):
+    """UTC [start, end) window for an inclusive local from/to date range."""
+    from_date = parse_date(from_text) if from_text else None
+    to_date = parse_date(to_text) if to_text else None
+    if (from_text and from_date is None) or (to_text and to_date is None):
+        raise ValidationError({'range': 'Use YYYY-MM-DD dates.'})
+    if from_date is None:
+        from_date = date(2000, 1, 1)
+    if to_date is None:
+        to_date = django_timezone.localtime(django_timezone.now(), patient_zone(timezone_name)).date()
+    if to_date < from_date:
+        raise ValidationError({'range': 'The end date must be on or after the start date.'})
+    if max_days is not None and from_text and to_text and (to_date - from_date).days > max_days:
+        raise ValidationError({'range': f'Choose a range of up to {max_days} days.'})
+    tz = patient_zone(timezone_name)
+    start = datetime.combine(from_date, time.min, tzinfo=tz).astimezone(timezone.utc)
+    end = datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
+    return start, end, from_date, to_date
+
+
+def doctor_meal_history(user, start, end, tz, limit=100, offset=0):
+    meals = (Meal.objects.filter(user=user, eaten_at__gte=start, eaten_at__lt=end)
+             .prefetch_related('items').order_by('-eaten_at'))
+    return {
+        'count': meals.count(),
+        'limit': limit,
+        'offset': offset,
+        'meals': [doctor_meal_payload(meal, tz) for meal in meals[offset:offset + limit]],
+    }
+
+
+def doctor_analytics(user, start, end, tz):
+    """Aggregate food frequency, monthly, and daily data from meal snapshots."""
+    item_qs = MealItem.objects.filter(meal__user=user, meal__eaten_at__gte=start, meal__eaten_at__lt=end)
+    meal_qs = Meal.objects.filter(user=user, eaten_at__gte=start, eaten_at__lt=end)
+
+    totals = item_qs.aggregate(
+        items=Count('id'), grams=Sum('grams'), kcal=Sum('kcal'),
+        protein_g=Sum('protein_g'), carbs_g=Sum('carbs_g'), fat_g=Sum('fat_g'))
+    meals_logged = meal_qs.count()
+
+    most_consumed = list(item_qs.values('food_name').annotate(
+        times=Count('id'), grams=Sum('grams'), kcal=Sum('kcal'),
+        protein_g=Sum('protein_g'), carbs_g=Sum('carbs_g'), fat_g=Sum('fat_g'),
+    ).order_by('-grams', 'food_name')[:10])
+
+    food_frequency = list(item_qs.values('food_name').annotate(
+        times=Count('id'), grams=Sum('grams'), kcal=Sum('kcal'),
+    ).order_by('-times', 'food_name')[:500])
+
+    monthly = list(meal_qs.annotate(month=TruncMonth('eaten_at', tzinfo=tz)).values('month').annotate(
+        meals=Count('id', distinct=True), item_count=Count('items__id'),
+        kcal=Sum('items__kcal'), protein_g=Sum('items__protein_g'),
+        carbs_g=Sum('items__carbs_g'), fat_g=Sum('items__fat_g'), grams=Sum('items__grams'),
+    ).order_by('month'))
+
+    daily = list(meal_qs.annotate(day=TruncDay('eaten_at', tzinfo=tz)).values('day').annotate(
+        meals=Count('id', distinct=True), item_count=Count('items__id'),
+        kcal=Sum('items__kcal'), protein_g=Sum('items__protein_g'),
+        carbs_g=Sum('items__carbs_g'), fat_g=Sum('items__fat_g'), grams=Sum('items__grams'),
+    ).order_by('day'))
+
+    by_meal_type = list(meal_qs.values('meal_type').annotate(
+        meals=Count('id', distinct=True), item_count=Count('items__id'),
+        kcal=Sum('items__kcal'), grams=Sum('items__grams'),
+    ).order_by('meal_type'))
+
+    logged_days = len(daily)
+    total_kcal = _dec(totals['kcal'])
+    average = (total_kcal / logged_days).quantize(Decimal('1'), rounding=ROUND_HALF_UP) if logged_days else Decimal('0')
+
+    def bucket(row, key):
+        value = row[key]
+        text = value.strftime('%Y-%m' if key == 'month' else '%Y-%m-%d') if value is not None else ''
+        return {
+            key: text,
+            'meals': row['meals'], 'item_count': row['item_count'],
+            'kcal': str(_dec(row['kcal'])), 'protein_g': str(_dec(row['protein_g'])),
+            'carbs_g': str(_dec(row['carbs_g'])), 'fat_g': str(_dec(row['fat_g'])),
+            'grams': str(_dec(row['grams'])),
+        }
+
+    return {
+        'totals': {'items': totals['items'] or 0, 'kcal': str(total_kcal),
+                   'protein_g': str(_dec(totals['protein_g'])), 'carbs_g': str(_dec(totals['carbs_g'])),
+                   'fat_g': str(_dec(totals['fat_g'])), 'grams': str(_dec(totals['grams']))},
+        'meals_logged': meals_logged,
+        'items_logged': totals['items'] or 0,
+        'logged_days': logged_days,
+        'avg_kcal_per_logged_day': str(average),
+        'most_consumed': [{'food_name': row['food_name'], 'times': row['times'],
+                           'grams': str(_dec(row['grams'])), 'kcal': str(_dec(row['kcal'])),
+                           'protein_g': str(_dec(row['protein_g'])), 'carbs_g': str(_dec(row['carbs_g'])),
+                           'fat_g': str(_dec(row['fat_g']))} for row in most_consumed],
+        'food_frequency': [{'food_name': row['food_name'], 'times': row['times'],
+                            'grams': str(_dec(row['grams'])), 'kcal': str(_dec(row['kcal']))}
+                           for row in food_frequency],
+        'monthly': [bucket(row, 'month') for row in monthly],
+        'daily': [bucket(row, 'day') for row in daily],
+        'by_meal_type': [{'meal_type': row['meal_type'], 'meals': row['meals'], 'item_count': row['item_count'],
+                          'kcal': str(_dec(row['kcal'])), 'grams': str(_dec(row['grams']))}
+                         for row in by_meal_type],
+    }

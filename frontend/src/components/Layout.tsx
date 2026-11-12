@@ -8,6 +8,7 @@ import {
   Moon,
   Plus,
   Settings,
+  Stethoscope,
   Sun,
   UserRound,
 } from "lucide-react";
@@ -15,12 +16,14 @@ import { motion } from "framer-motion";
 import { GlassButton, GlassNavbar, GlassSidebar } from "../design/ui";
 import type { User } from "../lib/types";
 
-export type Page = "overview" | "meals" | "insights" | "settings" | "profile";
+export type Page =
+  "overview" | "meals" | "insights" | "sharing" | "settings" | "profile";
 
 const nav = [
   { id: "overview" as Page, label: "Overview", icon: Home },
   { id: "meals" as Page, label: "My Meals", icon: ClipboardList },
   { id: "insights" as Page, label: "Insights", icon: BarChart3 },
+  { id: "sharing" as Page, label: "Sharing", icon: Stethoscope },
   { id: "settings" as Page, label: "Settings", icon: Settings },
 ];
 
@@ -32,6 +35,7 @@ export function Layout({
   onLogout,
   dark,
   onToggleTheme,
+  sharingBadge,
   children,
 }: {
   user: User;
@@ -41,6 +45,7 @@ export function Layout({
   onLogout: () => void;
   dark: boolean;
   onToggleTheme: () => void;
+  sharingBadge?: number;
   children: React.ReactNode;
 }) {
   const currentLabel =
@@ -82,6 +87,14 @@ export function Layout({
                   <Icon size={17} strokeWidth={active ? 2.1 : 1.8} />
                 </span>
                 <span className="nav-item__text">{label}</span>
+                {id === "sharing" && (sharingBadge ?? 0) > 0 && (
+                  <span
+                    className="nav-item__badge"
+                    aria-label={`${sharingBadge} pending access requests`}
+                  >
+                    {sharingBadge}
+                  </span>
+                )}
                 {active && (
                   <motion.span
                     layoutId="sidebar-active-indicator"
@@ -233,6 +246,9 @@ export function Layout({
           >
             <Icon size={19} />
             <span>{label}</span>
+            {id === "sharing" && (sharingBadge ?? 0) > 0 && (
+              <span className="nav-item__badge">{sharingBadge}</span>
+            )}
             {page === id && (
               <motion.span
                 layoutId="mobile-nav-indicator"

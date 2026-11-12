@@ -1,7 +1,10 @@
+import re
+import secrets
 import uuid
 from decimal import Decimal, InvalidOperation
 from django.contrib.auth.base_user import BaseUserManager
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, RegexValidator
 from django.db import models
 from django.db.models import Q
@@ -10,6 +13,17 @@ from django.utils import timezone
 
 def key():
     return uuid.uuid4()
+
+
+def doctor_access_token():
+    return secrets.token_urlsafe(32)
+
+
+def validate_phone_number(value):
+    """Accept common phone punctuation; storage stays normalized digits."""
+    digits = re.sub(r'\D', '', str(value))
+    if not 6 <= len(digits) <= 15:
+        raise ValidationError('Phone must be 6-15 digits including country code.')
 
 
 MAX_PROFILE_PICTURE_SIZE = 5 * 1024 * 1024
@@ -77,6 +91,16 @@ class Profile(models.Model):
     )
     timezone = models.CharField(max_length=64, default='Asia/Dhaka')
     units = models.CharField(max_length=12, default='metric')
+    # Normalized digits with country code (no '+'), e.g. 8801712345678.
+    # NULL when unset so the unique constraint allows multiple missing values.
+    phone = models.CharField(
+        max_length=24,
+        blank=True,
+        default=None,
+        null=True,
+        unique=True,
+        validators=[validate_phone_number],
+    )
     gender = models.CharField(max_length=20, blank=True, default='')
     date_of_birth = models.DateField(null=True, blank=True)
     height_cm = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True, validators=[MinValueValidator(0)])
@@ -369,3 +393,60 @@ class GoalProgress(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['target', 'progress_date'], name='unique_target_progress_day')]
+
+
+class DoctorAccessRequest(models.Model):
+    """Consent record for a doctor (no account) to view a patient's history.
+
+    The doctor identifies the patient by email or phone from the public page.
+    The patient approves or denies the request in their own app. On approval
+    the request's view token becomes usable for a bounded window and the
+    patient can revoke it at any time.
+    """
+    STATUS_PENDING = 'pending'
+    STATUS_APPROVED = 'approved'
+    STATUS_DENIED = 'denied'
+    STATUS_REVOKED = 'revoked'
+    STATUS_CHOICES = (
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_DENIED, 'Denied'),
+        (STATUS_REVOKED, 'Revoked'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=key, editable=False)
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='doctor_access_requests')
+    doctor_name = models.CharField(max_length=120)
+    identifier_type = models.CharField(max_length=10)
+    identifier = models.CharField(max_length=254)
+    status = models.CharField(max_length=12, default=STATUS_PENDING, choices=STATUS_CHOICES)
+    view_token = models.CharField(max_length=64, unique=True, default=doctor_access_token, editable=False)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    denied_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['patient', '-created_at']),
+            models.Index(fields=['patient', 'status']),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=Q(identifier_type__in=('email', 'phone')),
+                                   name='doctor_request_identifier_type'),
+            models.CheckConstraint(condition=Q(status__in=('pending', 'approved', 'denied', 'revoked')),
+                                   name='doctor_request_status'),
+        ]
+
+    def is_active(self):
+        return self.status == self.STATUS_APPROVED and self.expires_at is not None \
+            and self.expires_at > timezone.now()
+
+    def effective_status(self):
+        """Status as seen by the doctor: an approved-but-expired request reads as expired."""
+        if self.status == self.STATUS_APPROVED and not self.is_active():
+            return 'expired'
+        return self.status

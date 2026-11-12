@@ -15,18 +15,38 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from rest_framework import status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import (Food, FoodImage, FoodPrediction, Meal, NutritionGoal,
+from .models import (DoctorAccessRequest, Food, FoodImage, FoodPrediction, Meal, NutritionGoal,
                      NutritionRecord, NutritionSource, Profile, RecognitionResult, User)
-from .serializers import FoodSerializer, MealInputSerializer, MealSerializer, ProfileSerializer
-from .services import (GOAL_FIELDS, create_meal, date_window, delete_private_image,
-                       delete_user_with_media, goal_values_for_user,
-                       matched_catalog_foods, owned_image, provider_image_bytes,
-                       recognize_with_provider, replace_meal_items, revise_profile_goal)
+from .serializers import (DoctorAccessRequestSerializer, FoodSerializer, MealInputSerializer,
+                          MealSerializer, ProfileSerializer)
+from .services import (DOCTOR_ANALYTICS_MAX_DAYS, DOCTOR_HISTORY_MAX_LIMIT, DOCTOR_REQUEST_PENDING_MESSAGE,
+                       GOAL_FIELDS, create_doctor_access_request, create_meal, date_range_window,
+                       date_window, decide_doctor_access_request, delete_private_image,
+                       delete_user_with_media, doctor_analytics, doctor_meal_history,
+                       doctor_request_for_token, doctor_request_status_payload, goal_values_for_user,
+                       matched_catalog_foods, owned_image, patient_timezone, provider_image_bytes,
+                       recognize_with_provider, replace_meal_items, resolve_patient,
+                       revise_profile_goal)
+
+
+def doctor_access_token(request):
+    return request.headers.get('X-Doctor-Access-Token', '')
+
+
+def clamp_int(text, default, minimum, maximum, field):
+    if text in (None, ''):
+        return default
+    try:
+        value = int(str(text))
+    except (TypeError, ValueError):
+        raise ValidationError({field: 'Use a whole number.'}) from None
+    return max(minimum, min(value, maximum))
 
 
 @ensure_csrf_cookie
@@ -241,11 +261,18 @@ def user_image(user, image_id):
 class MealListView(APIView):
     def get(self, request):
         meals = Meal.objects.filter(user=request.user).prefetch_related('items')
+        profile = None
         date_text = request.query_params.get('date')
-        if date_text:
+        from_text = request.query_params.get('from')
+        to_text = request.query_params.get('to')
+        if date_text or from_text or to_text:
             profile, _ = Profile.objects.get_or_create(user=request.user)
-            start, end = date_window(date_text, profile.timezone)
-            meals = meals.filter(eaten_at__gte=start, eaten_at__lt=end)
+            if date_text:
+                start, end = date_window(date_text, profile.timezone)
+                meals = meals.filter(eaten_at__gte=start, eaten_at__lt=end)
+            if from_text or to_text:
+                start, end, _, _ = date_range_window(from_text, to_text, profile.timezone, max_days=3660)
+                meals = meals.filter(eaten_at__gte=start, eaten_at__lt=end)
         return Response(MealSerializer(meals[:100], many=True).data)
 
     def post(self, request):
@@ -431,3 +458,104 @@ class PrivateImageView(APIView):
         if not delete_private_image(request.user, pk):
             raise Http404
         return Response(status=204)
+
+
+@method_decorator(csrf_protect, name='dispatch')
+class DoctorAccessRequestCreateView(APIView):
+    """Public endpoint: a doctor (no account) asks a patient for access.
+
+    The response never confirms whether the identifier belongs to an account;
+    unmatched requests get the same message and no token.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'doctor_request'
+
+    def post(self, request):
+        doctor_name = str(request.data.get('doctor_name', '')).strip()
+        if not doctor_name:
+            raise ValidationError({'doctor_name': 'Enter your name.'})
+        identifier_type, identifier, patient = resolve_patient(request.data.get('identifier'))
+        if patient is None:
+            return Response({'status': 'pending', 'token': None,
+                             'message': DOCTOR_REQUEST_PENDING_MESSAGE}, status=202)
+        access_request, _ = create_doctor_access_request(patient, doctor_name, identifier_type, identifier)
+        return Response({'status': access_request.status, 'token': access_request.view_token,
+                         'message': DOCTOR_REQUEST_PENDING_MESSAGE}, status=202)
+
+
+class DoctorAccessRequestListView(APIView):
+    def get(self, request):
+        requests = (DoctorAccessRequest.objects.filter(patient=request.user)
+                    .order_by('-created_at')[:50])
+        return Response(DoctorAccessRequestSerializer(requests, many=True).data)
+
+
+class DoctorAccessDecisionView(APIView):
+    def post(self, request, pk):
+        action = str(request.data.get('action', '')).strip().lower()
+        if action not in ('approve', 'deny', 'revoke'):
+            raise ValidationError({'action': 'Choose approve, deny, or revoke.'})
+        try:
+            access_request = DoctorAccessRequest.objects.get(pk=pk, patient=request.user)
+        except DoctorAccessRequest.DoesNotExist:
+            raise Http404
+        updated = decide_doctor_access_request(access_request, action, request.user)
+        return Response(DoctorAccessRequestSerializer(updated).data)
+
+
+class DoctorAccessStatusView(APIView):
+    """Public status poll for the doctor's page, authenticated by view token."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'doctor_view'
+
+    def get(self, request):
+        access_request = doctor_request_for_token(doctor_access_token(request))
+        if access_request is None:
+            raise Http404
+        return Response(doctor_request_status_payload(access_request))
+
+
+class DoctorAccessHistoryView(APIView):
+    """Public meal-history list for an approved request, authenticated by view token."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'doctor_view'
+
+    def get(self, request):
+        access_request = doctor_request_for_token(doctor_access_token(request))
+        if access_request is None:
+            raise Http404
+        if not access_request.is_active():
+            raise PermissionDenied('Access is not active. Ask the patient to approve or renew it.')
+        tz = patient_timezone(access_request.patient)
+        start, end, _, _ = date_range_window(
+            request.query_params.get('from'), request.query_params.get('to'), tz.key)
+        limit = clamp_int(request.query_params.get('limit'), 100, 1, DOCTOR_HISTORY_MAX_LIMIT, 'limit')
+        offset = clamp_int(request.query_params.get('offset'), 0, 0, 1000000, 'offset')
+        history = doctor_meal_history(access_request.patient, start, end, tz, limit=limit, offset=offset)
+        history['from'] = request.query_params.get('from')
+        history['to'] = request.query_params.get('to')
+        return Response(history)
+
+
+class DoctorAccessAnalyticsView(APIView):
+    """Public analytics for an approved request, authenticated by view token."""
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'doctor_view'
+
+    def get(self, request):
+        access_request = doctor_request_for_token(doctor_access_token(request))
+        if access_request is None:
+            raise Http404
+        if not access_request.is_active():
+            raise PermissionDenied('Access is not active. Ask the patient to approve or renew it.')
+        tz = patient_timezone(access_request.patient)
+        start, end, from_date, to_date = date_range_window(
+            request.query_params.get('from'), request.query_params.get('to'), tz.key,
+            max_days=DOCTOR_ANALYTICS_MAX_DAYS)
+        analytics = doctor_analytics(access_request.patient, start, end, tz)
+        analytics['range'] = {'from': from_date.isoformat(), 'to': to_date.isoformat()}
+        return Response(analytics)

@@ -1,5 +1,6 @@
 import json
 import tempfile
+from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
 from unittest.mock import patch
@@ -10,10 +11,11 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
-from .models import (Food, FoodAlias, FoodImage, FoodNutrition, FoodPrediction, FoodServing, Meal, MediaDeletionJob,
+from .models import (DoctorAccessRequest, Food, FoodAlias, FoodImage, FoodNutrition, FoodPrediction, FoodServing, Meal, MediaDeletionJob,
                      NutritionGoal, NutritionRecord, NutritionSource,
                      RecognitionResult, Profile, User)
-from .services import ProviderError, matched_catalog_foods, normalize_candidates
+from .services import (DOCTOR_ACCESS_HOURS, DOCTOR_REQUEST_PENDING_MESSAGE, ProviderError,
+                       matched_catalog_foods, normalize_candidates)
 
 
 class MealApiTests(TestCase):
@@ -517,3 +519,280 @@ class RecognitionTests(TestCase):
         self.assertEqual(body['candidates'], [])
         self.assertEqual(self.client.get(f"/api/v1/recognitions/{body['id']}/").json()['status'], 'failed')
         cloud.assert_not_called()
+
+
+def csrf_client():
+    client = Client(enforce_csrf_checks=True)
+    client.get('/api/v1/auth/csrf/')
+    return client, client.cookies['csrftoken'].value
+
+
+class DoctorAccessTests(TestCase):
+    """Public doctor request page, patient consent, token-gated history/analytics."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client(enforce_csrf_checks=True)
+        self.patient = User.objects.create_user(email='rahim@example.com', password='secure-pass-123',
+                                                display_name='Rahim Uddin')
+        Profile.objects.create(user=self.patient, timezone='Asia/Dhaka', phone='8801712345678')
+        self.stranger = User.objects.create_user(email='stranger@example.com', password='secure-pass-123')
+        Profile.objects.create(user=self.stranger, timezone='UTC')
+        self.rice = Food.objects.create(name='Rice', category='Grain', kcal_100g=130,
+                                        protein_100g=2.7, carbs_100g=28, fat_100g=0.3, source='Test fixture')
+        self.dal = Food.objects.create(name='Dal', category='Dish', kcal_100g=120,
+                                       protein_100g=6, carbs_100g=15, fat_100g=3, source='Test fixture')
+        self.client.get('/api/v1/auth/csrf/')
+        self.csrf = self.client.cookies['csrftoken'].value
+        login = self.client.post('/api/v1/auth/login/', data=json.dumps(
+            {'identifier': self.patient.email, 'password': 'secure-pass-123'}),
+            content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(login.status_code, 200, login.content)
+        self.client.get('/api/v1/auth/csrf/')
+        self.csrf = self.client.cookies['csrftoken'].value
+        self.doctor_client, self.doctor_csrf = csrf_client()
+        self.other_client, self.other_csrf = csrf_client()
+        self.seed_meals()
+
+    def seed_meals(self):
+        logged = [
+            ('2026-01-15T10:00:00+00:00', 'lunch', [(self.rice, 200), (self.dal, 100)]),
+            # 19:00 UTC on Jan 31 is 01:00 Feb 1 in Dhaka: must land in February.
+            ('2026-01-31T19:00:00+00:00', 'breakfast', [(self.rice, 150)]),
+            ('2026-02-10T06:00:00+00:00', 'dinner', [(self.dal, 200), (self.rice, 100)]),
+        ]
+        for eaten_at, meal_type, items in logged:
+            response = self.client.post('/api/v1/meals/', data=json.dumps({
+                'eaten_at': eaten_at, 'meal_type': meal_type,
+                'notes': 'private note', 'items': [{'food_id': str(food.id), 'grams': grams}
+                                                   for food, grams in items]}),
+                content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+            self.assertEqual(response.status_code, 201, response.content)
+
+    def request_access(self, identifier='rahim@example.com', doctor_name='Dr. Karim'):
+        return self.doctor_client.post('/api/v1/doctor-access/request/',
+                                       data=json.dumps({'identifier': identifier, 'doctor_name': doctor_name}),
+                                       content_type='application/json', HTTP_X_CSRFTOKEN=self.doctor_csrf)
+
+    def approve(self):
+        listing = self.client.get('/api/v1/doctor-access/requests/').json()
+        return self.client.post(f"/api/v1/doctor-access/requests/{listing[0]['id']}/decision/",
+                                data=json.dumps({'action': 'approve'}),
+                                content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+
+    def test_request_creation_is_public_and_generates_token(self):
+        response = self.request_access()
+        self.assertEqual(response.status_code, 202, response.content)
+        self.assertEqual(response.json()['status'], 'pending')
+        token = response.json()['token']
+        self.assertTrue(token)
+        request = DoctorAccessRequest.objects.get(patient=self.patient)
+        self.assertEqual(request.identifier_type, 'email')
+        self.assertEqual(request.identifier, 'rahim@example.com')
+        self.assertEqual(request.view_token, token)
+        self.assertFalse(request.is_active())
+
+    def test_request_reuses_pending_token_for_same_doctor(self):
+        first = self.request_access()
+        second = self.request_access()
+        self.assertEqual(first.json()['token'], second.json()['token'])
+        self.assertEqual(DoctorAccessRequest.objects.count(), 1)
+
+    def test_unknown_patient_gets_generic_response_without_token(self):
+        matched = self.request_access()
+        unmatched = self.request_access(identifier='nobody@example.com')
+        self.assertEqual(unmatched.status_code, 202, unmatched.content)
+        self.assertIsNone(unmatched.json()['token'])
+        self.assertEqual(unmatched.json()['message'], DOCTOR_REQUEST_PENDING_MESSAGE)
+        self.assertEqual(unmatched.json()['message'], matched.json()['message'])
+        self.assertEqual(DoctorAccessRequest.objects.count(), 1)
+
+    def test_request_requires_name_and_valid_identifier(self):
+        missing_name = self.request_access(doctor_name='   ')
+        self.assertEqual(missing_name.status_code, 400)
+        bad_email = self.request_access(identifier='not-an-email')
+        self.assertEqual(bad_email.status_code, 400)
+        bad_phone = self.request_access(identifier='123')
+        self.assertEqual(bad_phone.status_code, 400)
+
+    def test_phone_request_normalizes_digits(self):
+        response = self.request_access(identifier='+880 1712-345678')
+        self.assertEqual(response.status_code, 202, response.content)
+        request = DoctorAccessRequest.objects.get()
+        self.assertEqual(request.identifier_type, 'phone')
+        self.assertEqual(request.identifier, '8801712345678')
+
+    def test_patient_decision_and_token_gated_view(self):
+        token = self.request_access().json()['token']
+        listing = self.client.get('/api/v1/doctor-access/requests/').json()
+        self.assertEqual(listing[0]['doctor_name'], 'Dr. Karim')
+        self.assertNotIn('view_token', listing[0])
+        decision = self.approve()
+        self.assertEqual(decision.status_code, 200, decision.content)
+        self.assertEqual(decision.json()['status'], 'approved')
+        request = DoctorAccessRequest.objects.get()
+        self.assertIsNotNone(request.expires_at)
+        self.assertTrue(request.is_active())
+
+        status = self.doctor_client.get('/api/v1/doctor-access/view/status/', HTTP_X_DOCTOR_ACCESS_TOKEN=token)
+        body = status.json()
+        self.assertEqual(body['status'], 'approved')
+        self.assertTrue(body['active'])
+        self.assertEqual(body['patient_name'], 'Rahim Uddin')
+        self.assertEqual(body['patient_timezone'], 'Asia/Dhaka')
+
+        history = self.doctor_client.get('/api/v1/doctor-access/view/history/', HTTP_X_DOCTOR_ACCESS_TOKEN=token)
+        self.assertEqual(history.status_code, 200, history.content)
+        data = history.json()
+        self.assertEqual(data['count'], 3)
+        # Newest first; the meal logged at 19:00 UTC Jan 31 is Feb 1 in Dhaka.
+        self.assertEqual([meal['local_date'] for meal in data['meals']],
+                         ['2026-02-10', '2026-02-01', '2026-01-15'])
+        meal = data['meals'][0]
+        self.assertEqual(set(meal), {'id', 'eaten_at', 'local_date', 'meal_type', 'items', 'totals'})
+        self.assertEqual(set(meal['items'][0]),
+                         {'food_name', 'grams', 'kcal', 'protein_g', 'carbs_g', 'fat_g',
+                          'nutrition_source_snapshot'})
+        self.assertEqual(meal['totals']['kcal'], '370.00')
+        # Photos and notes never cross the boundary.
+        self.assertNotIn('notes', meal)
+        self.assertNotIn('image', meal)
+
+    def test_analytics_frequency_monthly_and_custom_range(self):
+        token = self.request_access().json()['token']
+        self.approve()
+        analytics = self.doctor_client.get('/api/v1/doctor-access/view/analytics/',
+                                           HTTP_X_DOCTOR_ACCESS_TOKEN=token).json()
+        self.assertEqual(Decimal(analytics['totals']['kcal']), Decimal('945.00'))
+        self.assertEqual(analytics['meals_logged'], 3)
+        self.assertEqual(analytics['items_logged'], 5)
+        self.assertEqual(analytics['logged_days'], 3)
+        self.assertEqual(Decimal(analytics['avg_kcal_per_logged_day']), Decimal('315'))
+        self.assertEqual(analytics['most_consumed'][0]['food_name'], 'Rice')
+        self.assertEqual(Decimal(analytics['most_consumed'][0]['grams']), Decimal('450.00'))
+        self.assertEqual(analytics['food_frequency'][0]['food_name'], 'Rice')
+        self.assertEqual(analytics['food_frequency'][0]['times'], 3)
+        self.assertEqual([row['month'] for row in analytics['monthly']], ['2026-01', '2026-02'])
+        january, february = analytics['monthly']
+        self.assertEqual(Decimal(january['kcal']), Decimal('380.00'))
+        self.assertEqual(january['meals'], 1)
+        self.assertEqual(Decimal(february['kcal']), Decimal('565.00'))
+        self.assertEqual(february['meals'], 2)
+        self.assertEqual({row['meal_type'] for row in analytics['by_meal_type']},
+                         {'lunch', 'breakfast', 'dinner'})
+
+        ranged = self.doctor_client.get(
+            '/api/v1/doctor-access/view/analytics/?from=2026-02-01&to=2026-02-28',
+            HTTP_X_DOCTOR_ACCESS_TOKEN=token).json()
+        self.assertEqual(ranged['range'], {'from': '2026-02-01', 'to': '2026-02-28'})
+        self.assertEqual([row['month'] for row in ranged['monthly']], ['2026-02'])
+        self.assertEqual(ranged['meals_logged'], 2)
+        history = self.doctor_client.get(
+            '/api/v1/doctor-access/view/history/?from=2026-02-01&to=2026-02-28',
+            HTTP_X_DOCTOR_ACCESS_TOKEN=token).json()
+        self.assertEqual(history['count'], 2)
+
+    def test_history_pagination(self):
+        token = self.request_access().json()['token']
+        self.approve()
+        page = self.doctor_client.get('/api/v1/doctor-access/view/history/?limit=2&offset=2',
+                                      HTTP_X_DOCTOR_ACCESS_TOKEN=token).json()
+        self.assertEqual(page['count'], 3)
+        self.assertEqual(len(page['meals']), 1)
+        self.assertEqual(page['meals'][0]['local_date'], '2026-01-15')
+
+    def test_unknown_token_is_not_found(self):
+        self.assertEqual(
+            self.doctor_client.get('/api/v1/doctor-access/view/status/',
+                                   HTTP_X_DOCTOR_ACCESS_TOKEN='bogus').status_code, 404)
+
+    def test_denied_request_blocks_access(self):
+        token = self.request_access(doctor_name='Dr. Other').json()['token']
+        listing = self.client.get('/api/v1/doctor-access/requests/').json()
+        denied = self.client.post(f"/api/v1/doctor-access/requests/{listing[0]['id']}/decision/",
+                                  data=json.dumps({'action': 'deny'}),
+                                  content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(denied.status_code, 200)
+        status = self.doctor_client.get('/api/v1/doctor-access/view/status/',
+                                        HTTP_X_DOCTOR_ACCESS_TOKEN=token).json()
+        self.assertEqual(status['status'], 'denied')
+        self.assertFalse(status['active'])
+        self.assertEqual(
+            self.doctor_client.get('/api/v1/doctor-access/view/history/',
+                                   HTTP_X_DOCTOR_ACCESS_TOKEN=token).status_code, 403)
+
+    def test_revoke_then_reapprove_renews_window(self):
+        token = self.request_access().json()['token']
+        self.approve()
+        listing = self.client.get('/api/v1/doctor-access/requests/').json()
+        request_id = listing[0]['id']
+        revoked = self.client.post(f'/api/v1/doctor-access/requests/{request_id}/decision/',
+                                   data=json.dumps({'action': 'revoke'}),
+                                   content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(revoked.status_code, 200)
+        self.assertEqual(
+            self.doctor_client.get('/api/v1/doctor-access/view/history/',
+                                   HTTP_X_DOCTOR_ACCESS_TOKEN=token).status_code, 403)
+        renewed = self.client.post(f'/api/v1/doctor-access/requests/{request_id}/decision/',
+                                   data=json.dumps({'action': 'approve'}),
+                                   content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(renewed.status_code, 200)
+        self.assertTrue(DoctorAccessRequest.objects.get().is_active())
+
+    def test_expired_request_reads_as_expired_and_renewable(self):
+        token = self.request_access().json()['token']
+        self.approve()
+        request = DoctorAccessRequest.objects.get()
+        request.expires_at = timezone.now() - timedelta(hours=1)
+        request.save(update_fields=['expires_at'])
+        self.assertFalse(request.is_active())
+        status = self.doctor_client.get('/api/v1/doctor-access/view/status/',
+                                        HTTP_X_DOCTOR_ACCESS_TOKEN=token).json()
+        self.assertEqual(status['status'], 'expired')
+        self.assertEqual(
+            self.doctor_client.get('/api/v1/doctor-access/view/analytics/',
+                                   HTTP_X_DOCTOR_ACCESS_TOKEN=token).status_code, 403)
+        renewed = self.approve()
+        self.assertEqual(renewed.status_code, 200, renewed.content)
+        self.assertTrue(DoctorAccessRequest.objects.get().is_active())
+
+    def test_other_user_cannot_see_or_decide_requests(self):
+        self.request_access()
+        login = self.other_client.post('/api/v1/auth/login/', data=json.dumps(
+            {'identifier': self.stranger.email, 'password': 'secure-pass-123'}),
+            content_type='application/json', HTTP_X_CSRFTOKEN=self.other_csrf)
+        self.assertEqual(login.status_code, 200, login.content)
+        self.other_client.get('/api/v1/auth/csrf/')
+        self.other_csrf = self.other_client.cookies['csrftoken'].value
+        listing = self.other_client.get('/api/v1/doctor-access/requests/').json()
+        self.assertEqual(listing, [])
+        request_id = self.client.get('/api/v1/doctor-access/requests/').json()[0]['id']
+        response = self.other_client.post(f'/api/v1/doctor-access/requests/{request_id}/decision/',
+                                          data=json.dumps({'action': 'approve'}),
+                                          content_type='application/json', HTTP_X_CSRFTOKEN=self.other_csrf)
+        self.assertEqual(response.status_code, 404)
+
+    def test_public_request_requires_csrf(self):
+        bare = Client(enforce_csrf_checks=True)
+        response = bare.post('/api/v1/doctor-access/request/',
+                             data=json.dumps({'identifier': 'rahim@example.com', 'doctor_name': 'Dr. Karim'}),
+                             content_type='application/json')
+        self.assertEqual(response.status_code, 403)
+
+    def test_patient_meal_range_filter(self):
+        meals = self.client.get('/api/v1/meals/?from=2026-02-01&to=2026-02-28').json()
+        self.assertEqual(len(meals), 2)
+        invalid = self.client.get('/api/v1/meals/?from=yesterday')
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_profile_phone_saved_and_clearable(self):
+        response = self.client.patch('/api/v1/users/me/',
+                                     data=json.dumps({'profile': {'phone': '880 1712-999999'}}),
+                                     content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(Profile.objects.get(user=self.patient).phone, '8801712999999')
+        cleared = self.client.patch('/api/v1/users/me/',
+                                    data=json.dumps({'profile': {'phone': ''}}),
+                                    content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(cleared.status_code, 200)
+        self.assertIsNone(Profile.objects.get(user=self.patient).phone)

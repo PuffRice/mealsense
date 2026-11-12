@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 from rest_framework import serializers
-from .models import Food, Meal, MealItem, Profile
+from .models import DoctorAccessRequest, Food, Meal, MealItem, Profile
 
 VALID_GENDERS = ('', 'male', 'female', 'other')
 
@@ -22,6 +22,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             'profile_picture',
             'timezone',
             'units',
+            'phone',
             'gender',
             'date_of_birth',
             'height_cm',
@@ -39,6 +40,13 @@ class ProfileSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         path = '/api/v1/users/me/profile-picture/'
         return request.build_absolute_uri(path) if request else path
+
+    def validate_phone(self, value):
+        # Store NULL when unset so the unique constraint allows many missing values.
+        if not str(value or '').strip():
+            return None
+        from .services import normalize_phone
+        return normalize_phone(value)
 
     def validate_gender(self, value):
         normalized = str(value or '').strip().lower()
@@ -102,6 +110,15 @@ class MealSerializer(serializers.ModelSerializer):
         items = list(obj.items.all())
         return {name: str(sum((getattr(item, name) for item in items), Decimal('0')))
                 for name in ['kcal', 'protein_g', 'carbs_g', 'fat_g']}
+
+
+class DoctorAccessRequestSerializer(serializers.ModelSerializer):
+    """Patient-facing representation; the view token is never exposed here."""
+
+    class Meta:
+        model = DoctorAccessRequest
+        fields = ['id', 'doctor_name', 'identifier_type', 'identifier', 'status',
+                  'created_at', 'approved_at', 'expires_at', 'denied_at', 'revoked_at']
 
 
 class MealInputSerializer(serializers.Serializer):

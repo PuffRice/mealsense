@@ -1309,7 +1309,7 @@ button:focus-visible {
 .week-bars__track span {
   width: 100%;
   border-radius: 99px;
-  background: var(--accent);
+  background: var(--brand-accent);
   transition: height 400ms var(--ease-glass);
 }
 
@@ -3329,5 +3329,486 @@ table tbody td {
 
   .editor-item__amount {
     margin-left: 42px;
+  }
+}
+
+/* --- Sharing & doctor access --- */
+.nav-item__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 6px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: var(--brand-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.nav-item__text + .nav-item__badge {
+  margin-left: auto;
+}
+
+.mobile-nav .nav-item__badge {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  margin: 0;
+}
+
+.sharing-info__columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.sharing-info__col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: var(--surface-subtle);
+}
+
+.sharing-info__col ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.sharing-info__icon {
+  color: var(--brand-accent);
+}
+
+.sharing-request-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sharing-request-list--muted {
+  opacity: 0.85;
+}
+
+.sharing-request {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sharing-request:first-child {
+  border-top: none;
+}
+
+.sharing-request__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--surface-muted);
+  color: var(--brand-accent);
+}
+
+.sharing-request__avatar--active {
+  background: color-mix(in srgb, var(--brand-accent) 18%, transparent);
+}
+
+.sharing-request__avatar--muted {
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+}
+
+.sharing-request__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sharing-request__body h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+}
+
+.sharing-request__body p {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.sharing-request__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.sharing-loading {
+  padding: 12px 4px;
+  color: var(--text-muted);
+}
+
+/* Public doctor portal */
+.doctor-shell {
+  min-height: 100vh;
+  padding: 28px clamp(16px, 4vw, 40px) 48px;
+  background:
+    radial-gradient(
+      1200px 600px at 80% -10%,
+      color-mix(in srgb, var(--brand-accent) 10%, transparent),
+      transparent
+    ),
+    var(--canvas);
+}
+
+.doctor-shell__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1080px;
+  margin: 0 auto 26px;
+}
+
+.doctor-shell__main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.doctor-form-card {
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 26px;
+}
+
+.doctor-form-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--surface-muted);
+  color: var(--brand-accent);
+}
+
+.doctor-form-card__icon--pulse {
+  color: var(--brand-accent);
+}
+
+.doctor-spin {
+  animation: doctor-rotate 1.1s linear infinite;
+}
+
+@keyframes doctor-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.doctor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 18px 0 6px;
+}
+
+.doctor-form .button {
+  align-self: flex-start;
+}
+
+.doctor-form__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13.5px;
+}
+
+.doctor-form__notice {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--surface-subtle);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.doctor-form__privacy {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.doctor-code {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 18px 0;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--surface-subtle);
+}
+
+.doctor-code__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.doctor-code__row code {
+  flex: 1;
+  min-width: 220px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid rgba(125, 140, 120, 0.25);
+  font-size: 12.5px;
+  word-break: break-all;
+}
+
+.doctor-code p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.doctor-patient-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 22px;
+}
+
+.doctor-patient-bar__info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.doctor-patient-bar__info h1 {
+  margin: 0 0 3px;
+  font-size: 20px;
+}
+
+.doctor-patient-bar__info p {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.doctor-patient-bar__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.doctor-custom-range {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.doctor-custom-range .field {
+  min-width: 140px;
+}
+
+.doctor-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.doctor-analytics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 18px;
+}
+
+.doctor-food-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.doctor-food-row__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13.5px;
+}
+
+.doctor-food-row__head strong {
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.doctor-food-row__head small {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.doctor-food-row__track {
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.doctor-food-row__track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--brand-accent),
+    color-mix(in srgb, var(--brand-accent) 60%, #d8c26a)
+  );
+}
+
+.doctor-monthly-plot {
+  min-height: 180px;
+}
+
+.doctor-mealtype-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.doctor-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(125, 140, 120, 0.18);
+}
+
+.doctor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.doctor-table th,
+.doctor-table td {
+  padding: 9px 14px;
+  text-align: left;
+}
+
+.doctor-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.doctor-table tbody tr:nth-child(even) {
+  background: var(--surface-subtle);
+}
+
+.doctor-meal-date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 108px;
+}
+
+.doctor-meal-date strong {
+  font-size: 13px;
+}
+
+.doctor-history-more {
+  display: flex;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+
+.doctor-disclaimer {
+  max-width: 760px;
+  margin: 4px auto 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+@media (max-width: 900px) {
+  .doctor-analytics-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sharing-info__columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .doctor-meal-date {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .doctor-shell {
+    padding-top: 20px;
+  }
+
+  .doctor-shell__head {
+    margin-bottom: 18px;
+  }
+
+  .doctor-patient-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .doctor-request__actions,
+  .sharing-request__actions {
+    width: 100%;
+  }
+
+  .sharing-request {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .nav-item__badge {
+    margin-left: 6px;
   }
 }
