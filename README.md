@@ -64,6 +64,13 @@ The patient's own meal-history endpoint also accepts `from` and `to` date parame
 
 ## Recognition switch
 
+The supplied DINOv3 dish classifier is available through the same authenticated
+`/api/v1/recognitions/` upload endpoint. Set `AI_PROVIDER=dinov3` (the example
+environment now selects it) and install `backend/requirements-local.txt`.
+Its nine-class checkpoint, class mapping, and deployment instructions are in
+[`backend/ml_models/dinov3/README.md`](backend/ml_models/dinov3/README.md).
+The previous BanglaFoodNet adapter remains available with `AI_PROVIDER=local`.
+
 Meal photo recognition supports the supplied BanglaFoodNet checkpoint on the backend.
 The current local configuration uses the fine-tuned model, with CPU inference and no
 cloud API calls. Suggestions still need confirmation; quantities and nutrition come

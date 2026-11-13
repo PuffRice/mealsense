@@ -396,7 +396,7 @@ class RecognitionView(APIView):
         upload.name = f'{uuid4().hex}.{extension}'
         checksum = sha256(upload.read()).hexdigest()
         upload.seek(0)
-        if settings.AI_PROVIDER == 'local':
+        if settings.AI_PROVIDER in ('local', 'dinov3'):
             # Preserve the source pixels and EXIF for checkpoint preprocessing.
             provider_bytes, provider_mime = upload.read(), mime
         else:

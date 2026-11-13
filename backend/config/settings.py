@@ -81,6 +81,9 @@ AI_LOCAL_CHECKPOINT = os.environ.get(
     'AI_LOCAL_CHECKPOINT', str(BASE_DIR / 'model_artifacts/banglafoodnet/banglafoodnet_finetuned.pth'))
 # CPU works without CUDA; use 'cuda' only with a compatible PyTorch installation.
 AI_LOCAL_DEVICE = os.environ.get('AI_LOCAL_DEVICE', 'cpu').strip()
+AI_DINOV3_MODEL_DIR = os.environ.get('AI_DINOV3_MODEL_DIR', str(BASE_DIR / 'ml_models/dinov3'))
+AI_DINOV3_DEVICE = os.environ.get('AI_DINOV3_DEVICE', 'auto').strip().lower()
+AI_DINOV3_TOP_K = int(os.environ.get('AI_DINOV3_TOP_K', '5'))
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],

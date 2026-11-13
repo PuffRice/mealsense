@@ -171,6 +171,9 @@ def recognize_with_provider(image_bytes, mime):
     unavailable so callers fall back to manual logging.
     """
     provider = getattr(settings, 'AI_PROVIDER', '')
+    if provider == 'dinov3':
+        from .dinov3_recognition import recognize_dinov3
+        return recognize_dinov3(image_bytes)
     if provider == 'local':
         from .local_recognition import recognize_locally
         return recognize_locally(image_bytes)
