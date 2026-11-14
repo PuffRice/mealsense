@@ -497,6 +497,41 @@ class RecognitionTests(TestCase):
         cloud.assert_not_called()
         compress.assert_not_called()
 
+        custom_food_res = self.client.post(
+            '/api/v1/foods/',
+            data=json.dumps({
+                'name': 'Old Dhaka Mutton Kacchi Biryani',
+                'category': 'My foods',
+                'kcal_100g': '193.9',
+                'protein_100g': '10.6',
+                'carbs_100g': '15.5',
+                'fat_100g': '9.5',
+            }),
+            content_type='application/json',
+            HTTP_X_CSRFTOKEN=self.csrf,
+        )
+        self.assertEqual(custom_food_res.status_code, 201, custom_food_res.content)
+        custom_food_id = custom_food_res.json()['id']
+
+        meal_res = self.client.post(
+            '/api/v1/meals/',
+            data=json.dumps({
+                'eaten_at': timezone.now().isoformat(),
+                'meal_type': 'lunch',
+                'notes': 'This is a test food',
+                'image_id': body['image_id'],
+                'items': [{
+                    'food_id': custom_food_id,
+                    'grams': 380,
+                    'recognition_result_id': body['candidates'][0]['result_id'],
+                }],
+            }),
+            content_type='application/json',
+            HTTP_X_CSRFTOKEN=self.csrf,
+        )
+        self.assertEqual(meal_res.status_code, 201, meal_res.content)
+        self.assertEqual(meal_res.json()['items'][0]['recognition_result'], saved.id)
+
     @override_settings(AI_PROVIDER='local', AI_LOCAL_CHECKPOINT='/missing/mealsense-checkpoint.pth')
     def test_missing_local_checkpoint_keeps_manual_logging_available(self):
         with patch('core.services._provider_request') as cloud:

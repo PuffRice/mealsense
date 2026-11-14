@@ -537,10 +537,13 @@ def replace_meal_items(meal: Meal, items):
         if item.get('recognition_result_id'):
             result = RecognitionResult.objects.filter(
                 pk=item['recognition_result_id'], session__user=meal.user).first()
-            if result is None or (result.food_id and result.food_id != food.id):
+            if result is None:
                 raise ValidationError({'items': 'Recognition result does not match this food.'})
             if result.session.image_id != meal.image_id:
                 raise ValidationError({'items': 'Recognition result belongs to another meal image.'})
+            if result.food_id != food.id:
+                result.food = food
+                result.save(update_fields=['food'])
         MealItem.objects.create(meal=meal, food=food, food_name=food.name, grams=grams,
                                 serving=serving, recognition_result=result,
                                 **nutrient_snapshot(food, grams))

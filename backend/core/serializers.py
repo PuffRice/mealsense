@@ -186,11 +186,16 @@ class MealInputSerializer(serializers.Serializer):
                 raise serializers.ValidationError('Each item needs food_id and grams.')
             try:
                 UUID(str(item['food_id']))
-                if item.get('serving_id'):
-                    if int(item['serving_id']) <= 0:
+                if item.get('serving_id') not in (None, ''):
+                    if int(str(item['serving_id'])) <= 0:
                         raise ValueError()
-                if item.get('recognition_result_id'):
-                    UUID(str(item['recognition_result_id']))
+                if item.get('recognition_result_id') not in (None, ''):
+                    raw_result_id = str(item['recognition_result_id']).strip()
+                    if raw_result_id.isdigit():
+                        if int(raw_result_id) <= 0:
+                            raise ValueError()
+                    else:
+                        UUID(raw_result_id)
                 grams = Decimal(str(item['grams']))
                 if not grams.is_finite() or grams <= 0 or grams > 10000:
                     raise ValueError()
