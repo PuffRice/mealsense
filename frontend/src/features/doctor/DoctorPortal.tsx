@@ -19,14 +19,13 @@ import {
   Utensils,
 } from "lucide-react";
 import { Badge, EmptyState, GlassButton, GlassCard } from "../../design/ui";
-import { doctorPortalApi } from "../../lib/api";
+import { ApiError, doctorPortalApi } from "../../lib/api";
 import type {
   DoctorAnalytics,
   DoctorHistory,
   DoctorStatus,
 } from "../../lib/types";
 
-const TOKEN_KEY = "mealsense-doctor-token";
 const POLL_MS = 15000;
 
 type Stage = "form" | "pending" | "active" | "blocked";
@@ -35,11 +34,18 @@ type RangeKey = "30" | "90" | "365" | "all" | "custom";
 function isoDaysAgo(days: number) {
   const date = new Date();
   date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  const date = new Date();
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function formatWhen(value?: string | null) {
@@ -54,9 +60,7 @@ export function DoctorPortal() {
   const [stage, setStage] = useState<Stage>("form");
   const [identifier, setIdentifier] = useState("");
   const [doctorName, setDoctorName] = useState("");
-  const [token, setToken] = useState(
-    () => sessionStorage.getItem(TOKEN_KEY) || "",
-  );
+  const [token, setToken] = useState("");
   const [statusData, setStatusData] = useState<DoctorStatus | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -103,6 +107,7 @@ export function DoctorPortal() {
           offset > 0 && current
             ? {
                 ...nextHistory,
+                offset,
                 meals: [...current.meals, ...nextHistory.meals],
               }
             : nextHistory,
@@ -112,10 +117,12 @@ export function DoctorPortal() {
       } catch (cause) {
         const message =
           cause instanceof Error ? cause.message : "Could not load the record.";
-        if (message.toLowerCase().includes("not active")) {
+        if (
+          cause instanceof ApiError &&
+          (cause.status === 403 || cause.status === 404)
+        ) {
           setStage("blocked");
           setToken("");
-          sessionStorage.removeItem(TOKEN_KEY);
         } else {
           setDataError(message);
         }
@@ -141,10 +148,12 @@ export function DoctorPortal() {
           stopPolling();
           setStage("blocked");
         }
-      } catch {
-        setStage("form");
-        setToken("");
-        sessionStorage.removeItem(TOKEN_KEY);
+      } catch (cause) {
+        if (cause instanceof ApiError && cause.status === 404) {
+          // Token may be a pending synthetic token for an unmatched account or unknown code;
+          // stay in pending stage if already polling, or show notice on manual reconnect.
+          setStage("pending");
+        }
       }
       return;
     },
@@ -177,8 +186,8 @@ export function DoctorPortal() {
     try {
       const result = await doctorPortalApi.request(identifier, doctorName);
       if (result.token) {
-        sessionStorage.setItem(TOKEN_KEY, result.token);
         setToken(result.token);
+        setStage("pending");
         await checkStatus(result.token);
       } else {
         setNotice(result.message);
@@ -194,7 +203,6 @@ export function DoctorPortal() {
 
   function forget() {
     stopPolling();
-    sessionStorage.removeItem(TOKEN_KEY);
     setToken("");
     setStatusData(null);
     setHistory(null);
@@ -216,7 +224,8 @@ export function DoctorPortal() {
   async function loadMore() {
     if (!token || !history) return;
     setLoadingMore(true);
-    await loadDashboard(token, rangeParams, history.meals.length);
+    const nextOffset = history.meals.length;
+    await loadDashboard(token, rangeParams, nextOffset);
     setLoadingMore(false);
   }
 

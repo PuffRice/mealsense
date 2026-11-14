@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { WifiOff } from "lucide-react";
+import { WifiOff, X } from "lucide-react";
 import { Layout, type Page } from "./components/Layout";
 import { pageRevealVariants } from "./design/motion";
+import { Field, GlassButton, GlassModal, ToastNotice } from "./design/ui";
 import { LandingPage } from "./features/landing/LandingPage";
 import { Overview } from "./features/overview/Overview";
 import { MealsPage } from "./features/meals/MealsPage";
@@ -42,6 +43,15 @@ export default function App() {
   const [dataError, setDataError] = useState("");
   const [lastSynced, setLastSynced] = useState("");
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [toast, setToast] = useState<{
+    type: "error" | "success" | "info";
+    message: string;
+  } | null>(null);
+  const [mealToDelete, setMealToDelete] = useState<Meal | null>(null);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState("");
+  const [confirmBusy, setConfirmBusy] = useState(false);
+
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("mealsense-theme", dark ? "dark" : "light");
@@ -55,18 +65,82 @@ export default function App() {
       window.removeEventListener("offline", update);
     };
   }, []);
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setUser(null);
+      setMeals([]);
+      setDaily(null);
+      setWeekly([]);
+      setEditing(null);
+      setPage("overview");
+      if (window.location.pathname !== "/") {
+        window.history.replaceState(null, "", "/");
+      }
+    };
+    window.addEventListener("mealsense:unauthorized", onUnauthorized);
+    return () =>
+      window.removeEventListener("mealsense:unauthorized", onUnauthorized);
+  }, []);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
   const refresh = useCallback(async (activeUser: User) => {
-    try {
-      const [nextMeals, nextFoods, nextDaily, nextWeekly] = await Promise.all([
-        mealsApi.list(),
-        foodsApi.list(),
-        mealsApi.daily(dateInZone(activeUser.profile.timezone)),
-        mealsApi.weekly(),
-      ]);
+    const [mealsRes, foodsRes, dailyRes, weeklyRes] = await Promise.allSettled([
+      mealsApi.list(),
+      foodsApi.list(),
+      mealsApi.daily(dateInZone(activeUser.profile.timezone)),
+      mealsApi.weekly(),
+    ]);
+    let nextMeals: Meal[] | undefined;
+    let nextFoods: Food[] | undefined;
+    let nextDaily: Daily | undefined;
+    let nextWeekly: Daily[] | undefined;
+    const errors: string[] = [];
+
+    if (mealsRes.status === "fulfilled") {
+      nextMeals = mealsRes.value;
       setMeals(nextMeals);
+    } else {
+      errors.push(
+        mealsRes.reason instanceof Error
+          ? mealsRes.reason.message
+          : "Could not load meals.",
+      );
+    }
+    if (foodsRes.status === "fulfilled") {
+      nextFoods = foodsRes.value;
       setFoods(nextFoods);
+    } else {
+      errors.push(
+        foodsRes.reason instanceof Error
+          ? foodsRes.reason.message
+          : "Could not load foods.",
+      );
+    }
+    if (dailyRes.status === "fulfilled") {
+      nextDaily = dailyRes.value;
       setDaily(nextDaily);
+    } else {
+      errors.push(
+        dailyRes.reason instanceof Error
+          ? dailyRes.reason.message
+          : "Could not load daily summary.",
+      );
+    }
+    if (weeklyRes.status === "fulfilled") {
+      nextWeekly = weeklyRes.value;
       setWeekly(nextWeekly);
+    } else {
+      errors.push(
+        weeklyRes.reason instanceof Error
+          ? weeklyRes.reason.message
+          : "Could not load weekly summary.",
+      );
+    }
+
+    if (errors.length === 0 && nextMeals && nextFoods && nextDaily && nextWeekly) {
       setDataError("");
       const savedAt = new Date().toISOString();
       setLastSynced(savedAt);
@@ -78,10 +152,8 @@ export default function App() {
         weekly: nextWeekly,
         savedAt,
       }).catch(() => {});
-    } catch (cause) {
-      setDataError(
-        cause instanceof Error ? cause.message : "Could not load your data.",
-      );
+    } else if (errors.length > 0) {
+      setDataError(errors[0]);
     }
   }, []);
   useEffect(() => {
@@ -139,7 +211,10 @@ export default function App() {
   }, [loading, user]);
   async function logout() {
     if (!online) {
-      window.alert("Connect to the internet to securely log out.");
+      setToast({
+        type: "error",
+        message: "Connect to the internet to securely log out.",
+      });
       return;
     }
     try {
@@ -156,41 +231,39 @@ export default function App() {
         window.history.replaceState(null, "", "/");
       }
     } catch (cause) {
-      window.alert(
-        cause instanceof Error ? cause.message : "Could not log out.",
-      );
+      setToast({
+        type: "error",
+        message: cause instanceof Error ? cause.message : "Could not log out.",
+      });
     }
   }
-  async function deleteMeal(meal: Meal) {
-    if (
-      !window.confirm(
-        `Delete ${meal.items.map((item) => item.food_name).join(", ")}? This cannot be undone.`,
-      )
-    )
-      return;
+  async function confirmDeleteMeal() {
+    if (!mealToDelete) return;
+    setConfirmBusy(true);
     try {
-      await mealsApi.remove(meal.id);
+      await mealsApi.remove(mealToDelete.id);
+      setMealToDelete(null);
       if (user) await refresh(user);
+      setToast({ type: "success", message: "Meal deleted." });
     } catch (cause) {
-      window.alert(
-        cause instanceof Error ? cause.message : "Could not delete meal.",
-      );
+      setToast({
+        type: "error",
+        message:
+          cause instanceof Error ? cause.message : "Could not delete meal.",
+      });
+    } finally {
+      setConfirmBusy(false);
     }
   }
-  async function deleteAccount() {
-    if (
-      !window.confirm(
-        "Delete your account, meals, and meal images permanently?",
-      )
-    )
-      return;
-    const password = window.prompt(
-      "Enter your current password to confirm account deletion:",
-    );
-    if (!password) return;
+  async function confirmDeleteAccount(event: React.FormEvent) {
+    event.preventDefault();
+    if (!deleteAccountPassword) return;
+    setConfirmBusy(true);
     try {
-      await auth.remove(password);
+      await auth.remove(deleteAccountPassword);
       await clearLocalData();
+      setDeleteAccountOpen(false);
+      setDeleteAccountPassword("");
       setUser(null);
       setMeals([]);
       setDaily(null);
@@ -201,9 +274,13 @@ export default function App() {
         window.history.replaceState(null, "", "/");
       }
     } catch (cause) {
-      window.alert(
-        cause instanceof Error ? cause.message : "Could not delete account.",
-      );
+      setToast({
+        type: "error",
+        message:
+          cause instanceof Error ? cause.message : "Could not delete account.",
+      });
+    } finally {
+      setConfirmBusy(false);
     }
   }
   if (loading)
@@ -249,6 +326,13 @@ export default function App() {
         sharingBadge={pendingRequests}
       >
         <AnimatePresence>
+          {toast && (
+            <ToastNotice
+              type={toast.type}
+              message={toast.message}
+              onDismiss={() => setToast(null)}
+            />
+          )}
           {!online && (
             <motion.div
               initial={{ x: 80, opacity: 0 }}
@@ -304,7 +388,7 @@ export default function App() {
                 timezone={user.profile.timezone}
                 onAdd={() => setEditing("new")}
                 onEdit={setEditing}
-                onDelete={(meal) => void deleteMeal(meal)}
+                onDelete={(meal) => setMealToDelete(meal)}
               />
             )}
             {page === "insights" && <Insights user={user} weekly={weekly} />}
@@ -336,7 +420,10 @@ export default function App() {
             {page === "settings" && (
               <Settings
                 user={user}
-                onDelete={() => void deleteAccount()}
+                onDelete={() => {
+                  setDeleteAccountPassword("");
+                  setDeleteAccountOpen(true);
+                }}
                 dark={dark}
                 onToggleTheme={() => setDark(!dark)}
               />
@@ -350,6 +437,7 @@ export default function App() {
             meal={editing === "new" || editing === "camera" ? null : editing}
             initialCameraOpen={editing === "camera"}
             userId={user.id}
+            timezone={user.profile.timezone}
             foods={foods}
             onClose={() => setEditing(null)}
             onFoodCreated={(food) => setFoods((current) => [...current, food])}
@@ -358,6 +446,109 @@ export default function App() {
               setEditing(null);
             }}
           />
+        )}
+        {mealToDelete && (
+          <GlassModal
+            titleId="delete-meal-title"
+            onClose={() => !confirmBusy && setMealToDelete(null)}
+          >
+            <div className="modal__head">
+              <div>
+                <span className="eyebrow">CONFIRM DELETION</span>
+                <h2 id="delete-meal-title">Delete this meal?</h2>
+                <p>
+                  Delete{" "}
+                  <strong>
+                    {mealToDelete.items
+                      .map((item) => item.food_name)
+                      .join(", ")}
+                  </strong>
+                  ? This cannot be undone.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                disabled={confirmBusy}
+                onClick={() => setMealToDelete(null)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="modal__foot">
+              <GlassButton
+                type="button"
+                variant="secondary"
+                disabled={confirmBusy}
+                onClick={() => setMealToDelete(null)}
+              >
+                Cancel
+              </GlassButton>
+              <GlassButton
+                type="button"
+                variant="danger"
+                disabled={confirmBusy}
+                onClick={() => void confirmDeleteMeal()}
+              >
+                {confirmBusy ? "Deleting..." : "Delete meal"}
+              </GlassButton>
+            </div>
+          </GlassModal>
+        )}
+        {deleteAccountOpen && (
+          <GlassModal
+            titleId="delete-account-title"
+            onClose={() => !confirmBusy && setDeleteAccountOpen(false)}
+          >
+            <div className="modal__head">
+              <div>
+                <span className="eyebrow">ACCOUNT DELETION</span>
+                <h2 id="delete-account-title">Delete your account?</h2>
+                <p>
+                  This permanently deletes your account, meals, and meal images.
+                  Enter your current password to confirm.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                disabled={confirmBusy}
+                onClick={() => setDeleteAccountOpen(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={confirmDeleteAccount} className="modal__body">
+              <Field
+                label="Current password"
+                type="password"
+                value={deleteAccountPassword}
+                onChange={(event) =>
+                  setDeleteAccountPassword(event.target.value)
+                }
+                required
+              />
+              <div className="modal__foot">
+                <GlassButton
+                  type="button"
+                  variant="secondary"
+                  disabled={confirmBusy}
+                  onClick={() => setDeleteAccountOpen(false)}
+                >
+                  Cancel
+                </GlassButton>
+                <GlassButton
+                  type="submit"
+                  variant="danger"
+                  disabled={confirmBusy || !deleteAccountPassword}
+                >
+                  {confirmBusy ? "Deleting..." : "Delete account permanently"}
+                </GlassButton>
+              </div>
+            </form>
+          </GlassModal>
         )}
       </AnimatePresence>
     </>

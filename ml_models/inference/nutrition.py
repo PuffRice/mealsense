@@ -16,7 +16,7 @@ from typing import Any
 from .config import NutritionProviderConfig, load_ml_config
 
 FAO_RECIPE_SOURCE = (
-    "https://www.fao.org/fileadmin/templates/food_composition/documents/FCT_10_2_14_final_version.pdf"
+    "MealSense Traditional Bangladeshi Recipe Composition Prior (unverified reference; requires user confirmation)"
 )
 
 ALLOWED_FOOD_CLASSES: tuple[str, ...] = (
@@ -31,7 +31,12 @@ ALLOWED_FOOD_CLASSES: tuple[str, ...] = (
     "kacchi",
 )
 
-# Verified FCTB 2013 (INFS, University of Dhaka) per-100g raw edible portion records
+# FCTB 2013 reference records (INFS, University of Dhaka) per-100g raw edible
+# portion. These values are ATTRIBUTED to the published table but have NOT been
+# independently verified against it — every consumer must treat them as
+# unverified until reviewed. The runtime source of truth is the SQLite database
+# built by ml_models/scripts/build_fctb2013_db.py; this tuple only seeds that
+# build and acts as a fallback when the database file is absent.
 # Columns: (key, display_name, fctb_code, cooking_yield_factor, kcal_100g, protein_g, carbs_g, fat_g, fiber_g, iron_mg, calcium_mg, potassium_mg, citation)
 FCTB_2013_EXTENDED: tuple[
     tuple[str, str, str, float, float, float, float, float, float | None, float | None, float | None, float | None, str],
@@ -56,6 +61,7 @@ FCTB_2013_EXTENDED: tuple[
     ("beef", "Beef, moderate fat, raw", "10_0002", 0.70, 226.0, 20.6, 0.0, 15.9, 0.0, 2.6, 11.0, 318.0, "FCTB 2013 (Code 10_0002) - INFS, DU"),
     ("chicken_egg", "Hen Egg (Murgi Dim), whole, raw", "11_0002", 0.92, 158.0, 13.3, 0.6, 11.5, 0.0, 1.8, 50.0, 132.0, "FCTB 2013 (Code 11_0002) - INFS, DU"),
     ("yogurt", "Curd / Yogurt (Doi), whole milk", "12_0005", 1.00, 97.0, 3.5, 11.4, 4.1, 0.0, 0.2, 149.0, 180.0, "FCTB 2013 (Code 12_0005) - INFS, DU"),
+    ("cow_milk", "Cow milk, whole, fluid", "12_0001", 1.00, 67.0, 3.2, 4.8, 3.9, 0.0, 0.1, 120.0, 140.0, "FCTB 2013 (Code 12_0001) - INFS, DU"),
     ("ghee", "Ghee / Clarified Butter", "13_0002", 1.00, 898.0, 0.0, 0.0, 99.8, 0.0, 0.0, 0.0, 0.0, "FCTB 2013 (Code 13_0002) - INFS, DU"),
     ("soybean_oil", "Soybean cooking oil", "13_0008", 1.00, 900.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, "FCTB 2013 (Code 13_0008) - INFS, DU"),
     ("mustard_oil", "Mustard oil (Khati Shorsher Tel)", "13_0005", 1.00, 900.0, 0.0, 0.0, 100.0, 0.0, 0.0, 0.0, 0.0, "FCTB 2013 (Code 13_0005) - INFS, DU"),
@@ -107,8 +113,8 @@ INGREDIENT_SYNONYMS: dict[str, str] = {
     "hilsa": "hilsa_fish",
     "doi": "yogurt",
     "curd": "yogurt",
-    "saffron_milk": "yogurt",
-    "milk": "yogurt",
+    "saffron_milk": "cow_milk",
+    "milk": "cow_milk",
     "lamb_curry": "mutton",
     "mutton_curry": "mutton",
     "beef_curry": "beef",
@@ -148,7 +154,6 @@ DISH_CLASS_ALIASES: dict[str, str] = {
     "dim_bhaji": "egg_omlete",
     "fuchka": "fuchka",
     "phuchka": "fuchka",
-    "chotpoti": "fuchka",
     "haleem": "haleem",
     "halim": "haleem",
     "mutton_haleem": "haleem",
@@ -305,7 +310,7 @@ NINE_CLASS_KNOWLEDGE_BASE: dict[str, dict[str, Any]] = {
 
 
 @dataclass(frozen=True, slots=True)
-class VerifiedIngredientRecord:
+class FctbIngredientRecord:
     ingredient_key: str
     display_name: str
     fctb_code: str
@@ -330,56 +335,67 @@ def normalize_ingredient_key(raw_name: str) -> str:
 
 
 class NutritionValidationProvider:
-    """Queries verified FCTB 2013 composition records (with SQLite & in-memory cache)."""
+    """FCTB 2013 ingredient composition lookups (unverified data; SQLite preferred).
+
+    The SQLite database built by ``ml_models/scripts/build_fctb2013_db.py`` is
+    the runtime source of truth and carries per-row provenance and verification
+    status. The in-code seed table is only a fallback for clones where the
+    database file has not been built yet; records from either path are
+    unverified until independently reviewed.
+    """
 
     def __init__(self, cfg: NutritionProviderConfig | None = None) -> None:
         self.cfg = cfg or load_ml_config().nutrition
-        self._memory_cache: dict[str, VerifiedIngredientRecord] = {
-            row[0]: VerifiedIngredientRecord(*row) for row in FCTB_2013_EXTENDED
+        self._memory_cache: dict[str, FctbIngredientRecord] = {
+            row[0]: FctbIngredientRecord(*row) for row in FCTB_2013_EXTENDED
         }
 
     def is_enabled(self) -> bool:
         return self.cfg.provider not in ("none", "off", "disabled", "")
 
-    def lookup(self, ingredient_name: str) -> VerifiedIngredientRecord | None:
+    def lookup(self, ingredient_name: str) -> FctbIngredientRecord | None:
         if not self.is_enabled():
             return None
 
         key = normalize_ingredient_key(ingredient_name)
-        if key in self._memory_cache:
-            return self._memory_cache[key]
+        # Prefer the versioned SQLite database (provenance and verification
+        # status live there); the in-code table is a fallback for clones
+        # without the database file.
+        record = self._lookup_db(key) or self._memory_cache.get(key)
+        if record is not None:
+            self._memory_cache[key] = record
+        return record
 
-        # Check SQLite DB if configured and present
+    def _lookup_db(self, key: str) -> FctbIngredientRecord | None:
         db_path: Path = self.cfg.sqlite_db_path
-        if db_path and db_path.is_file():
-            try:
-                with sqlite3.connect(db_path) as conn:
-                    conn.row_factory = sqlite3.Row
-                    row = conn.execute(
-                        "SELECT * FROM nutrition_fctb WHERE ingredient_key = ?",
-                        (key,),
-                    ).fetchone()
-                    if row is not None:
-                        rec = VerifiedIngredientRecord(
-                            ingredient_key=row["ingredient_key"],
-                            display_name=row["display_name"],
-                            fctb_code=row["fctb_code"],
-                            cooking_yield_factor=float(row["cooking_yield_factor"]),
-                            calories_kcal_100g=float(row["calories_kcal_100g"]),
-                            protein_g_100g=float(row["protein_g_100g"]),
-                            carbohydrates_g_100g=float(row["carbohydrates_g_100g"]),
-                            fat_g_100g=float(row["fat_g_100g"]),
-                            fiber_g_100g=None,
-                            iron_mg_100g=None,
-                            calcium_mg_100g=None,
-                            potassium_mg_100g=None,
-                            source_citation=row["source_citation"],
-                        )
-                        self._memory_cache[key] = rec
-                        return rec
-            except Exception:
-                pass
-
+        if not (db_path and db_path.is_file()):
+            return None
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM nutrition_fctb WHERE ingredient_key = ?",
+                    (key,),
+                ).fetchone()
+                if row is not None:
+                    rec = FctbIngredientRecord(
+                        ingredient_key=row["ingredient_key"],
+                        display_name=row["display_name"],
+                        fctb_code=row["fctb_code"],
+                        cooking_yield_factor=float(row["cooking_yield_factor"]),
+                        calories_kcal_100g=float(row["calories_kcal_100g"]),
+                        protein_g_100g=float(row["protein_g_100g"]),
+                        carbohydrates_g_100g=float(row["carbohydrates_g_100g"]),
+                        fat_g_100g=float(row["fat_g_100g"]),
+                        fiber_g_100g=row["fiber_g_100g"] if row["fiber_g_100g"] is not None else None,
+                        iron_mg_100g=row["iron_mg_100g"] if row["iron_mg_100g"] is not None else None,
+                        calcium_mg_100g=row["calcium_mg_100g"] if row["calcium_mg_100g"] is not None else None,
+                        potassium_mg_100g=row["potassium_mg_100g"] if row["potassium_mg_100g"] is not None else None,
+                        source_citation=row["source_citation"],
+                    )
+                    return rec
+        except Exception:
+            pass
         return None
 
     def resolve_dish_class(self, raw_label: str) -> str | None:
@@ -388,9 +404,6 @@ class NutritionValidationProvider:
             return cleaned
         if cleaned in DISH_CLASS_ALIASES:
             return DISH_CLASS_ALIASES[cleaned]
-        for alias_key, target_cls in DISH_CLASS_ALIASES.items():
-            if alias_key in cleaned:
-                return target_cls
         return None
 
     def estimate_for_any_label(
@@ -399,7 +412,7 @@ class NutritionValidationProvider:
         display_name: str,
         confidence: float,
     ) -> dict[str, Any] | None:
-        """Return grounded FCTB nutrition analysis for any dish class, dish alias, or single ingredient."""
+        """Return grounded FCTB nutrition reference for any dish class, dish alias, or single ingredient."""
         dish_cls = self.resolve_dish_class(raw_label) or self.resolve_dish_class(display_name)
         if dish_cls is not None:
             return self.calculate_grounded_nutrition(
@@ -412,9 +425,9 @@ class NutritionValidationProvider:
         if rec is None:
             return None
 
-        serving_g = 150.0
+        basis_g = 100.0
         yield_factor = max(0.1, rec.cooking_yield_factor)
-        raw_equiv_g = serving_g / yield_factor
+        raw_equiv_g = basis_g / yield_factor
         factor = raw_equiv_g / 100.0
         kcal = round(factor * rec.calories_kcal_100g, 1)
         prot = round(factor * rec.protein_g_100g, 1)
@@ -431,19 +444,19 @@ class NutritionValidationProvider:
                 "confidence": round(float(confidence), 4),
             },
             "portion": {
-                "estimated_weight_g": serving_g,
-                "portion_description": "One standard serving (150 g)",
-                "weight_range_g": [120.0, 180.0],
-                "fullness_multiplier": 1.0,
+                "estimated_weight_g": None,
+                "portion_description": "Per 100 g edible reference basis (portion not estimated)",
+                "weight_range_g": None,
+                "fullness_multiplier": None,
                 "is_approximate": True,
             },
             "ingredients": [
                 {
                     "name": rec.display_name,
                     "ingredient_key": rec.ingredient_key,
-                    "estimated_weight_g": serving_g,
-                    "identification": "visible",
-                    "confidence": round(float(confidence), 2),
+                    "estimated_weight_g": basis_g,
+                    "identification": "recipe_inferred",
+                    "confidence": None,
                     "nutrition_source": rec.source_citation,
                     "recipe_source": FAO_RECIPE_SOURCE,
                     "calories_kcal": kcal,
@@ -455,9 +468,9 @@ class NutritionValidationProvider:
             "ingredient_breakdown": [
                 {
                     "name": rec.ingredient_key,
-                    "weight_g": serving_g,
-                    "identification": "visible",
-                    "confidence": round(float(confidence), 2),
+                    "weight_g": basis_g,
+                    "identification": "recipe_inferred",
+                    "confidence": None,
                     "nutrition_source": rec.source_citation,
                     "recipe_source": FAO_RECIPE_SOURCE,
                 }
@@ -476,21 +489,21 @@ class NutritionValidationProvider:
             },
             "confidence": {
                 "food_identification": round(float(confidence), 4),
-                "portion_estimation": 0.72,
-                "nutrition_estimation": round(float(confidence) * 0.85, 2),
+                "portion_estimation": None,
+                "nutrition_estimation": None,
             },
             "provenance": {
-                "status": "grounded_fctb_2013",
-                "is_verified_database": True,
+                "status": "unverified_reference",
+                "is_verified_database": False,
                 "is_approximate": True,
                 "sources": [rec.source_citation],
                 "vlm_raw_estimates": {},
             },
-            "observed_preparation_state": "Standard cooked serving",
-            "occluded_or_uncertain": False,
+            "observed_preparation_state": None,
+            "occluded_or_uncertain": True,
             "requires_user_confirmation": True,
-            "warnings": [],
-            "explanation": f"Approximate nutritional composition for {display_name} ({serving_g} g) grounded in {rec.source_citation}.",
+            "warnings": ["Portion weight was not visually estimated; values are per 100 g edible reference."],
+            "explanation": f"Per 100 g reference nutritional composition for {display_name} derived from {rec.source_citation}.",
         }
 
     def calculate_grounded_nutrition(
@@ -504,10 +517,15 @@ class NutritionValidationProvider:
         if kb is None:
             raise ValueError(f"Unsupported food class '{dinov3_class}'.")
 
+        has_vlm_observation = bool(vlm_vision_data)
         fullness = float(vlm_vision_data.get("visual_fullness_multiplier", 1.0) or 1.0)
         fullness = max(0.25, min(3.0, fullness))
-        portion_conf_label = str(vlm_vision_data.get("portion_confidence", "medium")).lower()
-        portion_conf_score = {"high": 0.85, "medium": 0.72, "low": 0.50}.get(portion_conf_label, 0.72)
+        portion_conf_label = str(vlm_vision_data.get("portion_confidence", "low" if not has_vlm_observation else "medium")).lower()
+        portion_conf_score: float | None = (
+            {"high": 0.85, "medium": 0.72, "low": 0.50}.get(portion_conf_label, 0.50)
+            if has_vlm_observation
+            else None
+        )
 
         est_serving_g = round(kb["standard_serving_g"] * fullness, 1)
         weight_range_g = [round(est_serving_g * 0.85, 1), round(est_serving_g * 1.15, 1)]
@@ -520,7 +538,7 @@ class NutritionValidationProvider:
                 visible_map[norm_k] = item
 
         # Compute normalized shares so ingredient weights sum consistently to est_serving_g
-        raw_shares: list[tuple[dict[str, Any], float, float]] = []
+        raw_shares: list[tuple[dict[str, Any], float, float | None, str]] = []
         for ing in kb["ingredients"]:
             key = ing["name"]
             v_obs = visible_map.get(key)
@@ -529,14 +547,15 @@ class NutritionValidationProvider:
                 if v_obs and float(v_obs.get("estimated_volume_share", 0.0)) > 0
                 else float(ing["ratio"])
             )
-            vis_conf = (
-                float(v_obs.get("visual_confidence", ing["conf"]))
-                if v_obs
-                else float(ing["conf"])
-            )
-            raw_shares.append((ing, vol_share, vis_conf))
+            if v_obs is not None:
+                vis_conf: float | None = round(float(v_obs.get("visual_confidence", ing["conf"])), 2)
+                ident_mode = "visible"
+            else:
+                vis_conf = None
+                ident_mode = "recipe_inferred"
+            raw_shares.append((ing, vol_share, vis_conf, ident_mode))
 
-        total_share = sum(s for _, s, _ in raw_shares) or 1.0
+        total_share = sum(s for _, s, _, _ in raw_shares) or 1.0
 
         total_kcal = 0.0
         total_prot = 0.0
@@ -558,7 +577,7 @@ class NutritionValidationProvider:
         all_grounded = True
 
         allocated_g = 0.0
-        for idx, (ing, share, vis_conf) in enumerate(raw_shares):
+        for idx, (ing, share, vis_conf, ident_mode) in enumerate(raw_shares):
             norm_share = share / total_share
             if idx == len(raw_shares) - 1:
                 w_cooked = round(max(0.5, est_serving_g - allocated_g), 1)
@@ -600,13 +619,12 @@ class NutritionValidationProvider:
                 all_grounded = False
                 n_source = "model_estimate_unverified"
 
-            combined_conf = round((vis_conf + float(dinov3_confidence)) / 2.0, 2)
             ingredients_list.append({
                 "name": ing["display_name"],
                 "ingredient_key": ing["name"],
                 "estimated_weight_g": w_cooked,
-                "identification": ing["identification"],
-                "confidence": combined_conf,
+                "identification": ident_mode,
+                "confidence": vis_conf,
                 "nutrition_source": n_source,
                 "recipe_source": kb["recipe_source"],
                 "calories_kcal": ing_kcal,
@@ -617,29 +635,28 @@ class NutritionValidationProvider:
             detailed_breakdown.append({
                 "name": ing["name"],
                 "weight_g": w_cooked,
-                "identification": ing["identification"],
-                "confidence": combined_conf,
+                "identification": ident_mode,
+                "confidence": vis_conf,
                 "nutrition_source": n_source,
                 "recipe_source": kb["recipe_source"],
             })
 
         if not self.is_enabled():
             warnings.append(
-                "Verified nutrition database provider is disabled; values are unverified model estimates."
+                "Nutrition database provider is disabled; values are unverified model estimates."
             )
         if float(dinov3_confidence) < 0.65:
             warnings.append(
                 f"Low classification confidence ({dinov3_confidence:.2f}); please confirm food identity before logging."
             )
+        if not has_vlm_observation:
+            warnings.append(
+                "VLM visual analysis was not run; ingredient shares and portion weight are unverified recipe priors."
+            )
         if vlm_vision_data.get("occluded_or_uncertain"):
             warnings.append("Portion or ingredients appear partially occluded; please verify serving weight.")
         if not vlm_vision_data.get("dish_matches_prediction", True):
             warnings.append("VLM noted potential visual mismatch with top classifier label; user review required.")
-
-        nutrition_conf = round(
-            min(0.95, (float(dinov3_confidence) + portion_conf_score) / 2.0 * (0.95 if all_grounded else 0.70)),
-            2,
-        )
 
         # If provider is disabled, fall back to VLM raw estimates if present or null
         if self.is_enabled() and all_grounded:
@@ -655,7 +672,11 @@ class NutritionValidationProvider:
                 "calcium_mg": round(total_calcium, 1) if has_calcium else None,
                 "potassium_mg": round(total_potassium, 1) if has_potassium else None,
             }
-            provenance_status = "grounded_fctb_2013"
+            provenance_status = (
+                "fctb_2013_grounded_with_unverified_recipe_priors"
+                if has_vlm_observation
+                else "unverified_reference"
+            )
         else:
             raw_nutr = vlm_vision_data.get("model_estimated_nutrition") or {}
             nutrition_block = {
@@ -672,22 +693,14 @@ class NutritionValidationProvider:
             }
             provenance_status = "model_estimate_only"
 
-        prep_state = (
-            str(vlm_vision_data.get("observed_preparation_state") or "").strip()
-            or kb["preparation"]
-        )
+        prep_state = str(vlm_vision_data.get("observed_preparation_state") or "").strip() or None
         portion_desc = kb["portion_description"]
         if fullness > 1.15:
             portion_desc = f"Large serving (~{fullness:.2f}x standard)"
         elif fullness < 0.85:
             portion_desc = f"Small serving (~{fullness:.2f}x standard)"
 
-        requires_confirmation = (
-            float(dinov3_confidence) < 0.65
-            or portion_conf_label == "low"
-            or bool(vlm_vision_data.get("occluded_or_uncertain", False))
-            or not bool(vlm_vision_data.get("dish_matches_prediction", True))
-        )
+        requires_confirmation = True
 
         return {
             "food_name": kb["food_name"],
@@ -710,23 +723,23 @@ class NutritionValidationProvider:
             "micronutrients": micronutrients_block,
             "confidence": {
                 "food_identification": round(float(dinov3_confidence), 4),
-                "portion_estimation": round(portion_conf_score, 2),
-                "nutrition_estimation": nutrition_conf,
+                "portion_estimation": round(portion_conf_score, 2) if portion_conf_score is not None else None,
+                "nutrition_estimation": None,
             },
             "provenance": {
                 "status": provenance_status,
-                "is_verified_database": self.is_enabled() and all_grounded,
+                "is_verified_database": False,
                 "is_approximate": True,
                 "sources": sorted(sources_set),
                 "vlm_raw_estimates": vlm_vision_data,
             },
             "observed_preparation_state": prep_state,
-            "occluded_or_uncertain": bool(vlm_vision_data.get("occluded_or_uncertain", False)),
+            "occluded_or_uncertain": bool(vlm_vision_data.get("occluded_or_uncertain", not has_vlm_observation)),
             "requires_user_confirmation": requires_confirmation,
             "warnings": warnings,
             "explanation": (
                 f"Approximate nutritional composition for {kb['food_name']} ({est_serving_g} g) "
-                f"calculated from VLM ingredient & portion analysis grounded in FCTB 2013 food composition data."
+                f"combining VLM visual analysis and unverified traditional recipe priors with FCTB 2013 ingredient records."
                 if (self.is_enabled() and all_grounded)
                 else f"Estimated nutritional composition based on the visible meal and predicted food identity ({kb['food_name']})."
             ),

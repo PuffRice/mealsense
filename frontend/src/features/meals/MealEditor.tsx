@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera,
@@ -20,88 +20,52 @@ import {
   SelectField,
 } from "../../design/ui";
 import { modalMotionVariants } from "../../design/motion";
-import { foodsApi, mealsApi, uploadMealImage } from "../../lib/api";
+import { foodsApi, mealsApi, nutritionApi, uploadMealImage } from "../../lib/api";
 import { loadDraft, removeDraft, saveDraft } from "../../lib/offline";
 import type {
   Candidate,
   Food,
   Meal,
   MealInput,
+  NutritionPreview,
   VLMAnalysis,
 } from "../../lib/types";
 
-function localDateTime(date?: string) {
+function localDateTime(date?: string, timeZone?: string) {
   const value = date ? new Date(date) : new Date();
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).formatToParts(value);
+      const get = (type: string) =>
+        parts.find((item) => item.type === type)?.value || "";
+      const hour = get("hour") === "24" ? "00" : get("hour");
+      if (get("year") && get("month") && get("day") && hour && get("minute")) {
+        return `${get("year")}-${get("month")}-${get("day")}T${hour}:${get("minute")}`;
+      }
+    } catch {
+      // Fallback to device local time if timeZone is invalid
+    }
+  }
   return new Date(value.getTime() - value.getTimezoneOffset() * 60000)
     .toISOString()
     .slice(0, 16);
 }
 
-type FallbackNutrition = {
-  portion_g: number;
-  kcal_100g: string;
-  protein_100g: string;
-  carbs_100g: string;
-  fat_100g: string;
-};
+const MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024;
+const ALLOWED_UPLOAD_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 
-const FCTB_FALLBACK_PER_100G: Record<string, FallbackNutrition> = {
-  bakorkhani: { portion_g: 80, kcal_100g: "465.4", protein_100g: "8.8", carbs_100g: "63.2", fat_100g: "24.7" },
-  bakarkhani: { portion_g: 80, kcal_100g: "465.4", protein_100g: "8.8", carbs_100g: "63.2", fat_100g: "24.7" },
-  beguni: { portion_g: 100, kcal_100g: "272.5", protein_100g: "7.9", carbs_100g: "21.4", fat_100g: "17.3" },
-  biriyani: { portion_g: 350, kcal_100g: "178.6", protein_100g: "9.8", carbs_100g: "16.4", fat_100g: "7.3" },
-  biryani: { portion_g: 350, kcal_100g: "178.6", protein_100g: "9.8", carbs_100g: "16.4", fat_100g: "7.3" },
-  chicken_biryani: { portion_g: 350, kcal_100g: "178.6", protein_100g: "9.8", carbs_100g: "16.4", fat_100g: "7.3" },
-  mutton_biryani: { portion_g: 380, kcal_100g: "190.4", protein_100g: "10.6", carbs_100g: "15.5", fat_100g: "9.5" },
-  kacchi: { portion_g: 380, kcal_100g: "190.4", protein_100g: "10.6", carbs_100g: "15.5", fat_100g: "9.5" },
-  kacchi_biryani: { portion_g: 380, kcal_100g: "190.4", protein_100g: "10.6", carbs_100g: "15.5", fat_100g: "9.5" },
-  chickpeas: { portion_g: 160, kcal_100g: "176.2", protein_100g: "6.6", carbs_100g: "19.7", fat_100g: "8.1" },
-  chola: { portion_g: 160, kcal_100g: "176.2", protein_100g: "6.6", carbs_100g: "19.7", fat_100g: "8.1" },
-  egg_omlete: { portion_g: 75, kcal_100g: "223.8", protein_100g: "11.3", carbs_100g: "2.6", fat_100g: "18.5" },
-  egg_omelette: { portion_g: 75, kcal_100g: "223.8", protein_100g: "11.3", carbs_100g: "2.6", fat_100g: "18.5" },
-  omelette: { portion_g: 75, kcal_100g: "223.8", protein_100g: "11.3", carbs_100g: "2.6", fat_100g: "18.5" },
-  fuchka: { portion_g: 180, kcal_100g: "212.4", protein_100g: "5.2", carbs_100g: "28.9", fat_100g: "8.4" },
-  haleem: { portion_g: 280, kcal_100g: "239.2", protein_100g: "14.0", carbs_100g: "14.5", fat_100g: "13.8" },
-  hilsha_fish: { portion_g: 180, kcal_100g: "356.1", protein_100g: "19.5", carbs_100g: "2.7", fat_100g: "29.0" },
-  hilsa_fish: { portion_g: 180, kcal_100g: "356.1", protein_100g: "19.5", carbs_100g: "2.7", fat_100g: "29.0" },
-  lamb_curry: { portion_g: 200, kcal_100g: "215.0", protein_100g: "18.4", carbs_100g: "3.5", fat_100g: "14.2" },
-  mutton_curry: { portion_g: 200, kcal_100g: "215.0", protein_100g: "18.4", carbs_100g: "3.5", fat_100g: "14.2" },
-  beef_curry: { portion_g: 200, kcal_100g: "228.0", protein_100g: "19.2", carbs_100g: "3.2", fat_100g: "15.4" },
-  chicken_curry: { portion_g: 200, kcal_100g: "172.0", protein_100g: "19.8", carbs_100g: "3.4", fat_100g: "8.8" },
-  rice: { portion_g: 200, kcal_100g: "126.9", protein_100g: "2.7", carbs_100g: "28.1", fat_100g: "0.3" },
-  potatoes: { portion_g: 150, kcal_100g: "71.7", protein_100g: "1.4", carbs_100g: "16.1", fat_100g: "0.1" },
-  potato: { portion_g: 150, kcal_100g: "71.7", protein_100g: "1.4", carbs_100g: "16.1", fat_100g: "0.1" },
-  saffron_milk: { portion_g: 200, kcal_100g: "97.0", protein_100g: "3.5", carbs_100g: "11.4", fat_100g: "4.1" },
-  dal: { portion_g: 180, kcal_100g: "134.4", protein_100g: "9.7", carbs_100g: "22.3", fat_100g: "0.4" },
-};
-
-function lookupClientNutritionFallback(
-  rawName?: string,
-  modelLabel?: string,
-): FallbackNutrition {
-  const keys = [modelLabel, rawName]
-    .filter(Boolean)
-    .map((val) =>
-      String(val)
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_+|_+$/g, ""),
-    );
-  for (const key of keys) {
-    if (FCTB_FALLBACK_PER_100G[key]) return FCTB_FALLBACK_PER_100G[key];
-    for (const [k, v] of Object.entries(FCTB_FALLBACK_PER_100G)) {
-      if (key.includes(k) || k.includes(key)) return v;
-    }
-  }
-  return {
-    portion_g: 150,
-    kcal_100g: "165.0",
-    protein_100g: "8.5",
-    carbs_100g: "20.0",
-    fat_100g: "5.5",
-  };
-}
 type Entry = {
   key: string;
   food_id: string;
@@ -113,6 +77,7 @@ export function MealEditor({
   meal,
   initialCameraOpen = false,
   userId,
+  timezone,
   foods,
   onClose,
   onSaved,
@@ -121,6 +86,7 @@ export function MealEditor({
   meal: Meal | null;
   initialCameraOpen?: boolean;
   userId: string;
+  timezone?: string;
   foods: Food[];
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -129,7 +95,7 @@ export function MealEditor({
   const [kind, setKind] = useState<Meal["meal_type"]>(
     meal?.meal_type || "lunch",
   );
-  const [when, setWhen] = useState(localDateTime(meal?.eaten_at));
+  const [when, setWhen] = useState(localDateTime(meal?.eaten_at, timezone));
   const [notes, setNotes] = useState(meal?.notes || "");
   const [entries, setEntries] = useState<Entry[]>(
     meal?.items.map((item) => ({
@@ -162,6 +128,10 @@ export function MealEditor({
   const [suggestions, setSuggestions] = useState<Candidate[]>([]);
   const [operationId] = useState(crypto.randomUUID());
   const [draftReady, setDraftReady] = useState(false);
+  const uploadSeqRef = useRef(0);
+  const [preview, setPreview] = useState<NutritionPreview | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+  const previewSeqRef = useRef(0);
 
   // Camera state & refs
   const [cameraActive, setCameraActive] = useState(false);
@@ -269,8 +239,11 @@ export function MealEditor({
   }, [meal, userId]);
 
   useEffect(() => {
-    if (!meal && draftReady)
+    if (meal || !draftReady) return;
+    const timer = window.setTimeout(() => {
       void saveDraft({ userId, kind, when, notes, entries }).catch(() => {});
+    }, 300);
+    return () => window.clearTimeout(timer);
   }, [meal, draftReady, userId, kind, when, notes, entries]);
 
   const filtered = foods
@@ -281,24 +254,52 @@ export function MealEditor({
     )
     .slice(0, 8);
 
-  const estimate = useMemo(
-    () =>
-      entries.reduce((sum, entry) => {
-        const food = foods.find((item) => item.id === entry.food_id);
-        return (
-          sum +
-          (food?.kcal_100g !== null && food?.kcal_100g !== undefined
-            ? (Number(food.kcal_100g) * entry.grams) / 100
-            : 0)
+  // Authoritative per-item and total nutrition comes from the server preview
+  // (ADR-008) — the client no longer scales per-100 g values by grams itself.
+  useEffect(() => {
+    if (entries.length === 0) {
+      setPreview(null);
+      setPreviewError(false);
+      return;
+    }
+    const seq = ++previewSeqRef.current;
+    const timer = window.setTimeout(async () => {
+      try {
+        const data = await nutritionApi.preview(
+          entries.map((entry) => ({
+            key: entry.key,
+            grams: entry.grams,
+            food_id: entry.food_id,
+          })),
         );
-      }, 0),
-    [entries, foods],
-  );
+        if (previewSeqRef.current !== seq) return;
+        setPreview(data);
+        setPreviewError(false);
+      } catch {
+        if (previewSeqRef.current === seq) {
+          setPreview(null);
+          setPreviewError(true);
+        }
+      }
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [entries]);
 
-  const hasPendingNutrition = entries.some((entry) => {
-    const food = foods.find((item) => item.id === entry.food_id);
-    return food?.kcal_100g === null || food?.kcal_100g === undefined;
-  });
+  const hasPendingNutrition =
+    entries.some((entry) => {
+      const food = foods.find((item) => item.id === entry.food_id);
+      return food?.kcal_100g === null || food?.kcal_100g === undefined;
+    }) || (preview?.pending ?? false);
+
+  function itemKcalLabel(entryKey: string, food?: Food): string {
+    if (!food || food.kcal_100g === null || food.kcal_100g === undefined) {
+      return "Nutrition pending";
+    }
+    const row = preview?.items.find((item) => item.key === entryKey);
+    return row && row.kcal !== null
+      ? `~${Math.round(Number(row.kcal))} kcal`
+      : "…";
+  }
 
   function addFood(food: Food, recognitionResultId?: string, grams = 100) {
     setEntries((current) => [
@@ -321,11 +322,6 @@ export function MealEditor({
     setCustom(true);
     setCustomRecognitionResultId(candidate?.result_id);
 
-    const fallback = lookupClientNutritionFallback(
-      analysis?.food_name || candidate?.name,
-      analysis?.food_class || candidate?.model_label,
-    );
-
     if (
       analysis &&
       analysis.nutrition &&
@@ -337,29 +333,22 @@ export function MealEditor({
         analysis.portion?.estimated_weight_g &&
         analysis.portion.estimated_weight_g > 0
           ? analysis.portion.estimated_weight_g
-          : fallback.portion_g;
+          : 100;
       const roundedPortion = Math.max(1, Math.round(portionWeight));
       setCustomName(analysis.food_name || candidate?.name || "");
       setCustomPortionGrams(String(roundedPortion));
 
-      const nut = analysis.nutrition;
-      const toPer100g = (
-        val: number | null | undefined,
-        fallbackVal: string,
-      ) => {
-        if (val === null || val === undefined || Number.isNaN(Number(val)))
-          return fallbackVal;
-        return String(
-          Math.max(
-            0,
-            Math.round(((Number(val) / portionWeight) * 100) * 10) / 10,
-          ),
-        );
-      };
-      setCustomKcal(toPer100g(nut?.calories_kcal, fallback.kcal_100g));
-      setCustomProtein(toPer100g(nut?.protein_g, fallback.protein_100g));
-      setCustomCarbs(toPer100g(nut?.carbohydrates_g, fallback.carbs_100g));
-      setCustomFat(toPer100g(nut?.fat_g, fallback.fat_100g));
+      // Per-100 g values are derived server-side (nutrition_per_100g, ADR-008);
+      // the client no longer divides per-portion numbers by the portion weight.
+      const per100g = analysis.nutrition_per_100g;
+      setCustomKcal(per100g?.kcal_100g != null ? String(per100g.kcal_100g) : "");
+      setCustomProtein(
+        per100g?.protein_100g != null ? String(per100g.protein_100g) : "",
+      );
+      setCustomCarbs(
+        per100g?.carbs_100g != null ? String(per100g.carbs_100g) : "",
+      );
+      setCustomFat(per100g?.fat_100g != null ? String(per100g.fat_100g) : "");
     } else if (candidate) {
       setVlmAnalysis(analysis || null);
       setCustomName(candidate.name);
@@ -369,15 +358,25 @@ export function MealEditor({
       if (existingFood && existingFood.kcal_100g !== null) {
         setCustomPortionGrams("100");
         setCustomKcal(String(existingFood.kcal_100g));
-        setCustomProtein(String(existingFood.protein_100g ?? "0"));
-        setCustomCarbs(String(existingFood.carbs_100g ?? "0"));
-        setCustomFat(String(existingFood.fat_100g ?? "0"));
+        setCustomProtein(
+          existingFood.protein_100g != null
+            ? String(existingFood.protein_100g)
+            : "",
+        );
+        setCustomCarbs(
+          existingFood.carbs_100g != null
+            ? String(existingFood.carbs_100g)
+            : "",
+        );
+        setCustomFat(
+          existingFood.fat_100g != null ? String(existingFood.fat_100g) : "",
+        );
       } else {
-        setCustomPortionGrams(String(fallback.portion_g));
-        setCustomKcal(fallback.kcal_100g);
-        setCustomProtein(fallback.protein_100g);
-        setCustomCarbs(fallback.carbs_100g);
-        setCustomFat(fallback.fat_100g);
+        setCustomPortionGrams("100");
+        setCustomKcal("");
+        setCustomProtein("");
+        setCustomCarbs("");
+        setCustomFat("");
       }
     }
 
@@ -447,26 +446,38 @@ export function MealEditor({
     setSuggestions([]);
     setPhotoNotice("");
     setVlmAnalysis(null);
+    if (!file) {
+      setPhoto(null);
+      return;
+    }
+    if (!ALLOWED_UPLOAD_TYPES.has(file.type)) {
+      setError("Only JPEG, PNG, and WebP images are supported.");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_SIZE_BYTES) {
+      setError("Image size must be 8 MB or smaller.");
+      return;
+    }
     setPhoto(file);
-    if (file)
-      setEntries((current) =>
-        current.map((entry) => ({
-          ...entry,
-          recognition_result_id: undefined,
-        })),
-      );
-    if (!file) return;
+    setEntries((current) =>
+      current.map((entry) => ({
+        ...entry,
+        recognition_result_id: undefined,
+      })),
+    );
     if (!navigator.onLine) {
       setError(
         "You are offline. Photos upload when online; add food manually now.",
       );
       return;
     }
+    const seq = ++uploadSeqRef.current;
     setBusy(true);
     setAnalyzingPhoto(true);
     setError("");
     try {
       const result = await uploadMealImage(file);
+      if (seq !== uploadSeqRef.current) return;
       setImageId(result.image_id);
       setPhotoNotice(result.message);
       const candidateList =
@@ -478,12 +489,15 @@ export function MealEditor({
         populateFormWithAnalysis(analysis, topCandidate);
       }
     } catch (cause) {
+      if (seq !== uploadSeqRef.current) return;
       setError(
         cause instanceof Error ? cause.message : "Could not upload photo.",
       );
     } finally {
-      setBusy(false);
-      setAnalyzingPhoto(false);
+      if (seq === uploadSeqRef.current) {
+        setBusy(false);
+        setAnalyzingPhoto(false);
+      }
     }
   }
 
@@ -598,14 +612,6 @@ export function MealEditor({
       setBusy(false);
     }
   }
-
-  const customPortionTotalKcal = useMemo(() => {
-    const kcal100 = Number(customKcal);
-    const grams = Number(customPortionGrams);
-    if (!customKcal || Number.isNaN(kcal100) || Number.isNaN(grams) || grams <= 0)
-      return null;
-    return Math.round((kcal100 * grams) / 100);
-  }, [customKcal, customPortionGrams]);
 
   return (
     <GlassModal titleId="meal-editor-title" onClose={onClose}>
@@ -826,6 +832,7 @@ export function MealEditor({
                   >
                     <span>
                       {food.name}
+                      {food.name_bn ? ` (${food.name_bn})` : ""}
                       <small>
                         {food.is_sample ? "Sample estimate" : food.source} ·{" "}
                         {food.kcal_100g === null
@@ -850,12 +857,13 @@ export function MealEditor({
                   •
                 </div>
                 <div>
-                  <strong>{food?.name || "Unknown food"}</strong>
+                  <strong>
+                    {food?.name || "Unknown food"}
+                    {food?.name_bn ? ` (${food.name_bn})` : ""}
+                  </strong>
                   <small>
                     {food?.source || "Reference"} ·{" "}
-                    {food?.kcal_100g === null
-                      ? "Nutrition pending"
-                      : `~${Math.round((Number(food?.kcal_100g || 0) * entry.grams) / 100)} kcal`}
+                    {itemKcalLabel(entry.key, food)}
                   </small>
                   {!!food?.servings?.length && (
                     <select
@@ -973,9 +981,9 @@ export function MealEditor({
                             ~{Math.round(vlmAnalysis.nutrition.calories_kcal)}{" "}
                             kcal
                           </strong>{" "}
-                          (P {vlmAnalysis.nutrition.protein_g ?? 0}g · C{" "}
-                          {vlmAnalysis.nutrition.carbohydrates_g ?? 0}g · F{" "}
-                          {vlmAnalysis.nutrition.fat_g ?? 0}g)
+                          (P {vlmAnalysis.nutrition.protein_g ?? "—"}g · C{" "}
+                          {vlmAnalysis.nutrition.carbohydrates_g ?? "—"}g · F{" "}
+                          {vlmAnalysis.nutrition.fat_g ?? "—"}g)
                         </>
                       )}
                     </p>
@@ -1052,7 +1060,7 @@ export function MealEditor({
               </div>
               <p>
                 {vlmAnalysis
-                  ? `Pre-filled by DINOv3 + Qwen-VL (grounded with FCTB per 100 g).${customPortionTotalKcal !== null ? ` At ${customPortionGrams} g, this portion is ~${customPortionTotalKcal} kcal.` : ""} You can edit any value before saving.`
+                  ? "Pre-filled by DINOv3 + Qwen-VL (grounded with FCTB per 100 g). You can edit any value before saving."
                   : "Use values from a label or trusted reference. You can edit any value before saving."}
               </p>
               <GlassButton
@@ -1084,22 +1092,17 @@ export function MealEditor({
         )}
         <div className="modal__foot">
           <span>
-            {hasPendingNutrition ? (
+            {previewError ? (
+              <strong>Nutrition total unavailable</strong>
+            ) : hasPendingNutrition ? (
               <strong>Nutrition pending</strong>
-            ) : (
+            ) : preview ? (
               <>
                 Estimated total{" "}
-                <strong>
-                  ~
-                  {Math.round(
-                    estimate +
-                      (entries.length === 0 && customPortionTotalKcal !== null
-                        ? customPortionTotalKcal
-                        : 0),
-                  )}{" "}
-                  kcal
-                </strong>
+                <strong>~{Math.round(Number(preview.totals.kcal))} kcal</strong>
               </>
+            ) : (
+              <strong>Calculating nutrition…</strong>
             )}
           </span>
           <GlassButton type="submit" disabled={busy} icon={<Check size={17} />}>

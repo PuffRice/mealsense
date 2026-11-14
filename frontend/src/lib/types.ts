@@ -95,6 +95,12 @@ export type VLMAnalysis = {
     fat_g: number | null;
     fiber_g?: number | null;
   };
+  nutrition_per_100g?: {
+    kcal_100g: string | null;
+    protein_100g: string | null;
+    carbs_100g: string | null;
+    fat_100g: string | null;
+  };
   micronutrients?: {
     iron_mg?: number | null;
     calcium_mg?: number | null;
@@ -116,6 +122,53 @@ export type Candidate = {
   food_id: string | null;
   result_id?: string;
   analysis?: VLMAnalysis;
+};
+export type NutritionPreviewItemInput = {
+  key: string;
+  grams: number;
+  food_id?: string;
+  kcal_100g?: string | number | null;
+  protein_100g?: string | number | null;
+  carbs_100g?: string | number | null;
+  fat_100g?: string | number | null;
+};
+export type NutritionPreviewItem = {
+  key: string;
+  grams: string;
+  food_id: string | null;
+  source: string;
+  kcal: string | null;
+  protein_g: string | null;
+  carbs_g: string | null;
+  fat_g: string | null;
+};
+export type NutritionPreview = {
+  items: NutritionPreviewItem[];
+  totals: {
+    kcal: string | null;
+    protein_g: string | null;
+    carbs_g: string | null;
+    fat_g: string | null;
+  };
+  pending: boolean;
+};
+export type GoalSuggestion = {
+  bmi: string;
+  category: "Underweight" | "Healthy weight" | "Overweight" | "Obese";
+  tone: "peach" | "green" | "neutral";
+  focus: string;
+  healthy_min_kg: string;
+  healthy_max_kg: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+};
+export type GoalSuggestionOverrides = {
+  height_cm?: number;
+  weight_kg?: number;
+  gender?: Gender;
+  date_of_birth?: string;
 };
 export type Meal = {
   id: string;

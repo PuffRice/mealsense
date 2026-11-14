@@ -11,7 +11,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
-from .models import (DoctorAccessRequest, Food, FoodAlias, FoodImage, FoodNutrition, FoodPrediction, FoodServing, Meal, MediaDeletionJob,
+from .models import (DailyNutritionSummary, DoctorAccessRequest, Food, FoodAlias, FoodImage,
+                     FoodLog, FoodNutrition, FoodPrediction, FoodServing, Meal, MediaDeletionJob,
                      NutritionGoal, NutritionRecord, NutritionSource,
                      RecognitionResult, Profile, User)
 from .services import (DOCTOR_ACCESS_HOURS, DOCTOR_REQUEST_PENDING_MESSAGE, ProviderError,
@@ -318,6 +319,74 @@ class MealApiTests(TestCase):
         self.assertEqual(updated['date_of_birth'], '1999-11-20')
         self.assertEqual(Decimal(updated['height_cm']), Decimal('168.5'))
         self.assertEqual(Decimal(updated['weight_kg']), Decimal('62.0'))
+
+    def test_nutrition_preview_computes_server_side(self):
+        response = self.post('/api/v1/nutrition/preview/', {
+            'items': [{'key': 'rice-1', 'grams': 150, 'food_id': str(self.food.id)}],
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        row = response.json()['items'][0]
+        self.assertEqual(row['kcal'], '195.00')   # 130 * 150 / 100, Decimal
+        self.assertEqual(row['protein_g'], '4.05')
+        self.assertEqual(row['carbs_g'], '42.00')
+        self.assertEqual(row['fat_g'], '0.45')
+        self.assertEqual(response.json()['totals'], {
+            'kcal': '195.00', 'protein_g': '4.05', 'carbs_g': '42.00', 'fat_g': '0.45'})
+        self.assertFalse(response.json()['pending'])
+
+    def test_nutrition_preview_accepts_inline_values(self):
+        response = self.post('/api/v1/nutrition/preview/', {
+            'items': [{'key': 'custom', 'grams': 200, 'kcal_100g': '180.5',
+                       'protein_100g': '5', 'carbs_100g': '20', 'fat_100g': '3'}],
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()['totals']['kcal'], '361.00')
+        self.assertEqual(response.json()['totals']['protein_g'], '10.00')
+
+    def test_nutrition_preview_unknown_nutrient_stays_null_not_zero(self):
+        response = self.post('/api/v1/nutrition/preview/', {
+            'items': [{'key': 'custom', 'grams': 200, 'protein_100g': '5'},
+                      {'key': 'rice', 'grams': 100, 'food_id': str(self.food.id)}],
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body['pending'])
+        self.assertIsNone(body['totals']['kcal'])  # one item lacks kcal -> total is unknown, not 0
+        self.assertEqual(body['totals']['protein_g'], '12.70')  # 5 * 200/100 + 2.7 * 100/100
+        self.assertIsNone(body['items'][0]['kcal'])
+
+    def test_nutrition_preview_rejects_other_users_food(self):
+        other_food = Food.objects.create(created_by=self.other, name='Secret dish', category='Curry',
+                                         kcal_100g=999, protein_100g=1, carbs_100g=1, fat_100g=1,
+                                         source='Private')
+        response = self.post('/api/v1/nutrition/preview/', {
+            'items': [{'key': 'x', 'grams': 100, 'food_id': str(other_food.id)}],
+        })
+        self.assertEqual(response.status_code, 400, response.content)
+
+    def test_goal_suggestions_match_expected_values(self):
+        response = self.post('/api/v1/goals/suggestions/', {
+            'height_cm': 170, 'weight_kg': 65, 'gender': 'male',
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()['suggestion']
+        self.assertEqual(body['bmi'], '22.5')
+        self.assertEqual(body['category'], 'Healthy weight')
+        self.assertEqual(body['kcal'], 2190)
+        self.assertEqual(body['protein_g'], 104)
+        self.assertEqual(body['carbs_g'], 291)
+        self.assertEqual(body['fat_g'], 68)
+        self.assertEqual(body['healthy_min_kg'], '53.5')
+        self.assertEqual(body['healthy_max_kg'], '72.0')
+
+    def test_goal_suggestions_return_null_without_inputs(self):
+        response = self.post('/api/v1/goals/suggestions/', {})
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()['suggestion'])
+
+    def test_goal_suggestions_reject_out_of_range_height(self):
+        response = self.post('/api/v1/goals/suggestions/', {'height_cm': 10, 'weight_kg': 65})
+        self.assertEqual(response.status_code, 400, response.content)
 
 
 def png_upload():
@@ -637,7 +706,7 @@ class DoctorAccessTests(TestCase):
         matched = self.request_access()
         unmatched = self.request_access(identifier='nobody@example.com')
         self.assertEqual(unmatched.status_code, 202, unmatched.content)
-        self.assertIsNone(unmatched.json()['token'])
+        self.assertTrue(isinstance(unmatched.json()['token'], str) and len(unmatched.json()['token']) >= 32)
         self.assertEqual(unmatched.json()['message'], DOCTOR_REQUEST_PENDING_MESSAGE)
         self.assertEqual(unmatched.json()['message'], matched.json()['message'])
         self.assertEqual(DoctorAccessRequest.objects.count(), 1)
@@ -756,7 +825,7 @@ class DoctorAccessTests(TestCase):
             self.doctor_client.get('/api/v1/doctor-access/view/history/',
                                    HTTP_X_DOCTOR_ACCESS_TOKEN=token).status_code, 403)
 
-    def test_revoke_then_reapprove_renews_window(self):
+    def test_revoke_then_reapprove_rotates_token(self):
         token = self.request_access().json()['token']
         self.approve()
         listing = self.client.get('/api/v1/doctor-access/requests/').json()
@@ -772,7 +841,19 @@ class DoctorAccessTests(TestCase):
                                    data=json.dumps({'action': 'approve'}),
                                    content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
         self.assertEqual(renewed.status_code, 200)
-        self.assertTrue(DoctorAccessRequest.objects.get().is_active())
+        request = DoctorAccessRequest.objects.get()
+        self.assertTrue(request.is_active())
+        # Re-approval must never resurrect the token the doctor held while the
+        # share was active: a leaked copy stays useless after revocation.
+        self.assertNotEqual(request.view_token, token)
+        self.assertEqual(len(request.view_token), len(token))
+        self.assertEqual(
+            self.doctor_client.get('/api/v1/doctor-access/view/history/',
+                                   HTTP_X_DOCTOR_ACCESS_TOKEN=token).status_code, 404)
+        self.assertEqual(
+            self.doctor_client.get('/api/v1/doctor-access/view/status/',
+                                   HTTP_X_DOCTOR_ACCESS_TOKEN=request.view_token).json()['active'],
+            True)
 
     def test_expired_request_reads_as_expired_and_renewable(self):
         token = self.request_access().json()['token']
@@ -831,3 +912,56 @@ class DoctorAccessTests(TestCase):
                                     content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
         self.assertEqual(cleared.status_code, 200)
         self.assertIsNone(Profile.objects.get(user=self.patient).phone)
+
+    def test_duplicate_phone_returns_400_instead_of_500(self):
+        self.other_client.post('/api/v1/auth/login/', data=json.dumps(
+            {'identifier': self.stranger.email, 'password': 'secure-pass-123'}),
+            content_type='application/json', HTTP_X_CSRFTOKEN=self.other_csrf)
+        self.other_client.get('/api/v1/auth/csrf/')
+        self.other_csrf = self.other_client.cookies['csrftoken'].value
+        dup = self.other_client.patch('/api/v1/users/me/',
+                                      data=json.dumps({'profile': {'phone': '+880 1712-345678'}}),
+                                      content_type='application/json', HTTP_X_CSRFTOKEN=self.other_csrf)
+        self.assertEqual(dup.status_code, 400, dup.content)
+
+    def test_food_log_audit_and_daily_summary_and_weekly_view(self):
+        weekly = self.client.get('/api/v1/nutrition/weekly/')
+        self.assertEqual(weekly.status_code, 200)
+        self.assertEqual(len(weekly.json()), 7)
+
+        missing_nutr = self.client.post('/api/v1/foods/',
+                                        data=json.dumps({'name': 'Incomplete Food', 'kcal_100g': '100'}),
+                                        content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(missing_nutr.status_code, 400)
+
+        created = self.client.post('/api/v1/meals/',
+                                   data=json.dumps({
+                                       'eaten_at': timezone.now().isoformat(),
+                                       'meal_type': 'lunch',
+                                       'items': [{'food_id': str(self.rice.id), 'grams': 200}],
+                                   }),
+                                   content_type='application/json', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(created.status_code, 201, created.content)
+        meal_id = created.json()['id']
+        self.assertTrue(FoodLog.objects.filter(user=self.patient, meal_id_snapshot=meal_id, action='created').exists())
+        self.assertTrue(DailyNutritionSummary.objects.filter(user=self.patient).exists())
+
+        deleted = self.client.delete(f'/api/v1/meals/{meal_id}/', HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(deleted.status_code, 204)
+        self.assertTrue(FoodLog.objects.filter(user=self.patient, meal_id_snapshot=meal_id, action='deleted').exists())
+
+    def test_recognition_detail_rejects_untrusted_checkpoint_parameter(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            buf = BytesIO()
+            Image.new('RGB', (64, 64), 'green').save(buf, format='JPEG')
+            upload = SimpleUploadedFile('test.jpg', buf.getvalue(), content_type='image/jpeg')
+            rec_res = self.client.post('/api/v1/recognitions/', {'image': upload}, HTTP_X_CSRFTOKEN=self.csrf)
+            self.assertEqual(rec_res.status_code, 201, rec_res.content)
+            rec_id = rec_res.json()['id']
+            bad_ckpt = self.client.post(
+                f'/api/v1/recognitions/{rec_id}/',
+                data=json.dumps({'action': 'analyze', 'checkpoint': '/tmp/evil_checkpoint'}),
+                content_type='application/json',
+                HTTP_X_CSRFTOKEN=self.csrf,
+            )
+            self.assertEqual(bad_ckpt.status_code, 400, bad_ckpt.content)

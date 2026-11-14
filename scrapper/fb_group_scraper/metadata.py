@@ -26,6 +26,9 @@ METADATA_COLUMNS = [
     "file_size_bytes",
     "sha256_hash",
     "download_status",
+    "license",
+    "permission_evidence",
+    "consent_status",
 ]
 
 
@@ -45,6 +48,17 @@ class ImageMetadata:
     file_size_bytes: int
     sha256_hash: str
     download_status: str = "success"
+    license: str = "unverified"
+    permission_evidence: str = ""
+    consent_status: str = "pending_review"
+
+    def is_approved_for_dataset(self) -> bool:
+        """Only allow dataset ingestion when license, permission evidence, and consent are verified."""
+        return (
+            self.consent_status == "approved"
+            and bool(self.license and self.license != "unverified")
+            and bool(self.permission_evidence.strip())
+        )
 
     def to_dict(self) -> Dict[str, object]:
         """Convert metadata record to a serializable dictionary."""
@@ -121,6 +135,9 @@ class MetadataManager:
                     file_size_bytes=int(float(item.get("file_size_bytes", 0) or 0)),
                     sha256_hash=str(item.get("sha256_hash", "")),
                     download_status=str(item.get("download_status", "success")),
+                    license=str(item.get("license", "unverified") or "unverified"),
+                    permission_evidence=str(item.get("permission_evidence", "") or ""),
+                    consent_status=str(item.get("consent_status", "pending_review") or "pending_review"),
                 )
                 self.records.append(record)
                 if record.sha256_hash:

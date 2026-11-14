@@ -58,8 +58,17 @@ export default defineConfig({
         globIgnores: ["**/bg*.svg"],
         runtimeCaching: [],
       },
-    } as any),
+    }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules/three")) return "three";
+        },
+      },
+    },
+  },
   server: {
     proxy: { "/api": { target: "http://127.0.0.1:8000", changeOrigin: true } },
   },

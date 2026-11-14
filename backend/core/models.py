@@ -133,6 +133,13 @@ class Food(models.Model):
 
     class Meta:
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name'],
+                condition=Q(created_by__isnull=True),
+                name='unique_shared_catalog_food_name',
+            ),
+        ]
 
 
 class FoodAlias(models.Model):
@@ -450,3 +457,48 @@ class DoctorAccessRequest(models.Model):
         if self.status == self.STATUS_APPROVED and not self.is_active():
             return 'expired'
         return self.status
+
+
+class ModelVersion(models.Model):
+    name = models.CharField(max_length=80)
+    version = models.CharField(max_length=120, unique=True)
+    architecture = models.CharField(max_length=80, blank=True)
+    artifact_sha256 = models.CharField(max_length=64, blank=True)
+    status = models.CharField(max_length=20, default='active')
+    deployed_at = models.DateTimeField(default=timezone.now)
+    evaluation_metrics = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-deployed_at']
+
+
+class FoodLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=key, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='food_logs')
+    meal = models.ForeignKey(Meal, null=True, blank=True, on_delete=models.SET_NULL, related_name='audit_logs')
+    meal_id_snapshot = models.UUIDField()
+    action = models.CharField(max_length=20)
+    previous_values = models.JSONField(null=True, blank=True)
+    new_values = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['user', '-created_at'])]
+
+
+class DailyNutritionSummary(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='daily_summaries')
+    summary_date = models.DateField()
+    meal_count = models.PositiveIntegerField(default=0)
+    kcal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    protein_g = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    carbs_g = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    fat_g = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    calculation_version = models.CharField(max_length=30, default='v1')
+    computed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'summary_date'], name='unique_user_daily_summary'),
+        ]

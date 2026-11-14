@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -22,18 +22,22 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .models import (DoctorAccessRequest, Food, FoodImage, FoodPrediction, Meal, NutritionGoal,
-                     NutritionRecord, NutritionSource, Profile, RecognitionResult, User)
+                     NutritionRecord, NutritionSource, Profile, RecognitionResult, User,
+                     doctor_access_token as generate_doctor_access_token)
 from .serializers import (AnalyzedMealSaveSerializer, DoctorAccessRequestSerializer, FoodSerializer,
-                          MealInputSerializer, MealSerializer, ProfileSerializer,
+                          GoalSuggestionInputSerializer, MealInputSerializer, MealSerializer,
+                          NutritionPreviewInputSerializer, ProfileSerializer,
                           StructuredNutritionAnalysisSerializer)
 from .services import (DOCTOR_ANALYTICS_MAX_DAYS, DOCTOR_HISTORY_MAX_LIMIT, DOCTOR_REQUEST_PENDING_MESSAGE,
-                       GOAL_FIELDS, create_doctor_access_request, create_meal, create_meal_from_analysis,
-                       date_range_window, date_window, decide_doctor_access_request, delete_private_image,
+                       GOAL_FIELDS, calculate_meals_totals, compute_goal_suggestions,
+                       compute_nutrition_preview, create_doctor_access_request, create_meal,
+                       create_meal_from_analysis, date_range_window, date_window,
+                       decide_doctor_access_request, delete_meal_for_user, delete_private_image,
                        delete_user_with_media, doctor_analytics, doctor_meal_history,
                        doctor_request_for_token, doctor_request_status_payload, goal_values_for_user,
-                       matched_catalog_foods, owned_image, patient_timezone, provider_image_bytes,
-                       recognize_with_provider, replace_meal_items, resolve_patient,
-                       revise_profile_goal)
+                       matched_catalog_foods, owned_image, patient_timezone, per_100g_from_analysis,
+                       provider_image_bytes, recognize_with_provider, resolve_patient,
+                       revise_profile_goal, update_meal_for_user, validate_vlm_checkpoint_name)
 
 
 def doctor_access_token(request):
@@ -150,7 +154,9 @@ def user_payload(user):
     profile_data = ProfileSerializer(profile).data
     goal_values = goal_values_for_user(user)
     if goal_values is not None:
-        profile_data.update(goal_values)
+        for key, val in goal_values.items():
+            if val is not None:
+                profile_data[key] = val
     return {'id': str(user.id), 'email': user.email, 'username': user.username,
             'display_name': user.display_name,
             'profile': profile_data}
@@ -173,7 +179,10 @@ class MeView(APIView):
         except Exception:
             raise ValidationError({'timezone': 'Unknown timezone.'}) from None
         with transaction.atomic():
-            serializer.save()
+            try:
+                serializer.save()
+            except IntegrityError:
+                raise ValidationError({'phone': 'This phone number is already in use.'}) from None
             if any(field in raw_profile for field in GOAL_FIELDS):
                 revise_profile_goal(profile)
             if 'display_name' in request.data:
@@ -297,37 +306,67 @@ class MealDetailView(APIView):
         serializer = MealInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        with transaction.atomic():
-            try:
-                meal = Meal.objects.select_for_update().get(pk=pk, user=request.user)
-            except Meal.DoesNotExist:
-                raise Http404 from None
-            if data.get('version') != meal.version:
-                return Response({'error': 'Meal changed on another device.', 'current': MealSerializer(meal).data}, status=409)
-            meal.eaten_at, meal.meal_type = data['eaten_at'], data['meal_type']
-            meal.notes = data.get('notes', '')
-            meal.image = user_image(request.user, data.get('image_id'))
-            meal.version += 1
-            meal.save()
-            replace_meal_items(meal, data['items'])
-        return Response(MealSerializer(meal).data)
+        try:
+            meal, payload = update_meal_for_user(request.user, pk, data)
+        except Meal.DoesNotExist:
+            raise Http404 from None
+        if meal is None:
+            return Response({'error': 'Meal changed on another device.', 'current': payload}, status=409)
+        return Response(payload)
 
     def delete(self, request, pk):
         meal = self.get_object(request, pk)
-        image = meal.image
-        meal.delete()
-        if image and not Meal.objects.filter(image=image).exists():
-            delete_private_image(request.user, image.id)
+        delete_meal_for_user(request.user, meal)
         return Response(status=204)
 
 
 def totals(meals):
-    values = {'kcal': Decimal('0'), 'protein_g': Decimal('0'), 'carbs_g': Decimal('0'), 'fat_g': Decimal('0')}
-    for meal in meals:
-        for item in meal.items.all():
-            for name in values:
-                values[name] += getattr(item, name)
-    return {key: str(value) for key, value in values.items()}
+    return calculate_meals_totals(meals)
+
+
+def analysis_with_per_100g(analysis):
+    """Attach server-derived per-100 g values so clients do not re-derive them."""
+    if not isinstance(analysis, dict):
+        return analysis
+    per_100g = per_100g_from_analysis(analysis)
+    return dict(analysis, nutrition_per_100g=per_100g) if per_100g is not None else analysis
+
+
+class NutritionPreviewView(APIView):
+    """Server-side nutrition preview so the client stops duplicating per-100 g math (ADR-008)."""
+
+    def post(self, request):
+        serializer = NutritionPreviewInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(compute_nutrition_preview(request.user, serializer.validated_data['items']))
+
+
+class GoalSuggestionsView(APIView):
+    """Server-side BMI + Mifflin-St Jeor suggestions; the client no longer computes BMR/TDEE (ADR-008)."""
+
+    def post(self, request):
+        serializer = GoalSuggestionInputSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        height = data.get('height_cm')
+        weight = data.get('weight_kg')
+        gender = data.get('gender')
+        dob = data.get('date_of_birth')
+        if height is None:
+            height = profile.height_cm
+        if weight is None:
+            weight = profile.weight_kg
+        if not gender:
+            gender = profile.gender or ''
+        if dob is None:
+            dob = profile.date_of_birth
+        age = None
+        if dob:
+            today = date.today()
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            age = age if age >= 0 else None
+        return Response({'suggestion': compute_goal_suggestions(height, weight, gender, age)})
 
 
 class DailyView(APIView):
@@ -343,8 +382,9 @@ class DailyView(APIView):
         progress = []
         if goal:
             for target in goal.targets.all():
-                actual = Decimal(daily_totals.get(target.nutrient_name, '0'))
-                progress.append({'nutrient': target.nutrient_name, 'actual': str(actual),
+                raw_actual = daily_totals.get(target.nutrient_name)
+                actual = str(Decimal(raw_actual)) if raw_actual is not None else None
+                progress.append({'nutrient': target.nutrient_name, 'actual': actual,
                                  'target': str(target.target_value), 'unit': target.unit,
                                  'goal_version': goal.version})
         return Response({'date': date, 'totals': daily_totals, 'meal_count': meals.count(), 'progress': progress})
@@ -382,7 +422,6 @@ class RecognitionView(APIView):
         if upload.size > 8 * 1024 * 1024:
             return Response({'image': 'Image exceeds 8 MB.'}, status=413)
         try:
-            Image.MAX_IMAGE_PIXELS = 20_000_000
             image = Image.open(upload)
             image.verify()
             upload.seek(0)
@@ -437,7 +476,7 @@ class RecognitionView(APIView):
             'message': messages.get(prediction.status, 'Recognition is not configured yet. Add food manually.'),
         }
         if 'analysis' in result and result['analysis'] is not None:
-            payload['analysis'] = result['analysis']
+            payload['analysis'] = analysis_with_per_100g(result['analysis'])
         return Response(payload, status=201)
 
 
@@ -462,11 +501,11 @@ class RecognitionDetailView(APIView):
             'error_code': prediction.error_code,
         }
         if analysis is not None:
-            payload['analysis'] = analysis
+            payload['analysis'] = analysis_with_per_100g(analysis)
         return Response(payload)
 
     def post(self, request, pk):
-        """Run VLM analysis (or save analyzed meal withingredient-level MealItems) for an owned recognition session."""
+        """Run VLM analysis (or save analyzed meal with ingredient-level MealItems) for an owned recognition session."""
         prediction = self.get_object(request, pk)
         action = str(request.data.get('action', 'analyze')).strip().lower()
 
@@ -476,8 +515,8 @@ class RecognitionDetailView(APIView):
             existing_analysis = prediction.candidates[0].get('analysis')
 
         if existing_analysis is None or action == 'analyze':
-            checkpoint = request.data.get('checkpoint') or getattr(settings, 'AI_VLM_CHECKPOINT', None)
-            device = request.data.get('device') or getattr(settings, 'AI_VLM_DEVICE', None)
+            checkpoint = validate_vlm_checkpoint_name(request.data.get('checkpoint'))
+            device = getattr(settings, 'AI_VLM_DEVICE', None)
             try:
                 from ml_models.inference.pipeline import analyze_food_image
                 with prediction.image.file.open('rb') as img_fh:
@@ -532,7 +571,7 @@ class RecognitionDetailView(APIView):
             return Response(
                 {
                     'recognition_id': str(prediction.id),
-                    'analysis': existing_analysis,
+                    'analysis': analysis_with_per_100g(existing_analysis),
                     'meal': meal_snapshot,
                 },
                 status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
@@ -544,7 +583,7 @@ class RecognitionDetailView(APIView):
                 'image_id': str(prediction.image_id),
                 'status': prediction.status,
                 'candidates': prediction.candidates,
-                'analysis': existing_analysis,
+                'analysis': analysis_with_per_100g(existing_analysis),
             },
             status=status.HTTP_200_OK,
         )
@@ -571,7 +610,7 @@ class DoctorAccessRequestCreateView(APIView):
     """Public endpoint: a doctor (no account) asks a patient for access.
 
     The response never confirms whether the identifier belongs to an account;
-    unmatched requests get the same message and no token.
+    unmatched requests get the same message and an indistinguishable opaque token.
     """
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
@@ -583,7 +622,7 @@ class DoctorAccessRequestCreateView(APIView):
             raise ValidationError({'doctor_name': 'Enter your name.'})
         identifier_type, identifier, patient = resolve_patient(request.data.get('identifier'))
         if patient is None:
-            return Response({'status': 'pending', 'token': None,
+            return Response({'status': 'pending', 'token': generate_doctor_access_token(),
                              'message': DOCTOR_REQUEST_PENDING_MESSAGE}, status=202)
         access_request, _ = create_doctor_access_request(patient, doctor_name, identifier_type, identifier)
         return Response({'status': access_request.status, 'token': access_request.view_token,

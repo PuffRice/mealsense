@@ -46,7 +46,13 @@ class ProfileSerializer(serializers.ModelSerializer):
         if not str(value or '').strip():
             return None
         from .services import normalize_phone
-        return normalize_phone(value)
+        normalized = normalize_phone(value)
+        qs = Profile.objects.filter(phone=normalized)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError('This phone number is already in use.')
+        return normalized
 
     def validate_gender(self, value):
         normalized = str(value or '').strip().lower()
@@ -89,6 +95,49 @@ class FoodSerializer(serializers.ModelSerializer):
             result['source'] = record.source.name
             result['source_ref'] = record.source.reference
         return result
+
+
+class NutritionPreviewItemSerializer(serializers.Serializer):
+    """One preview item: a catalog food reference or inline per-100 g values."""
+
+    key = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    grams = serializers.DecimalField(max_digits=8, decimal_places=2, min_value=Decimal('0.01'))
+    food_id = serializers.UUIDField(required=False, allow_null=True)
+    kcal_100g = serializers.DecimalField(max_digits=7, decimal_places=2, required=False, allow_null=True)
+    protein_100g = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    carbs_100g = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+    fat_100g = serializers.DecimalField(max_digits=6, decimal_places=2, required=False, allow_null=True)
+
+    def validate(self, attrs):
+        has_food_id = attrs.get('food_id') is not None
+        inline_fields = ('kcal_100g', 'protein_100g', 'carbs_100g', 'fat_100g')
+        has_inline = any(attrs.get(field) is not None for field in inline_fields)
+        if has_food_id and has_inline:
+            raise serializers.ValidationError(
+                'Provide either food_id or inline per-100 g values, not both.')
+        if not has_food_id and not has_inline:
+            raise serializers.ValidationError('Provide food_id or inline per-100 g values.')
+        return attrs
+
+
+class NutritionPreviewInputSerializer(serializers.Serializer):
+    items = NutritionPreviewItemSerializer(many=True, allow_empty=False)
+
+
+class GoalSuggestionInputSerializer(serializers.Serializer):
+    """Optional profile overrides; each field falls back to the saved profile."""
+
+    height_cm = serializers.DecimalField(max_digits=5, decimal_places=1, min_value=Decimal('50'),
+                                         max_value=Decimal('260'), required=False, allow_null=True)
+    weight_kg = serializers.DecimalField(max_digits=5, decimal_places=1, min_value=Decimal('20'),
+                                         max_value=Decimal('350'), required=False, allow_null=True)
+    gender = serializers.ChoiceField(choices=VALID_GENDERS, required=False, allow_blank=True)
+    date_of_birth = serializers.DateField(required=False, allow_null=True)
+
+    def validate_date_of_birth(self, value):
+        if value and value > date.today():
+            raise serializers.ValidationError('Date of birth cannot be in the future.')
+        return value
 
 
 class MealItemSerializer(serializers.ModelSerializer):

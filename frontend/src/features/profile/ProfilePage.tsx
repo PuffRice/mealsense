@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   Calendar,
@@ -14,13 +14,9 @@ import {
   GlassCard,
   SelectField,
 } from "../../design/ui";
-import { auth } from "../../lib/api";
-import type { Gender, User } from "../../lib/types";
-import {
-  calculateExactAge,
-  computeBmiAndSuggestions,
-  getTodayIso,
-} from "./bmi";
+import { auth, goalsApi } from "../../lib/api";
+import type { Gender, GoalSuggestion, User } from "../../lib/types";
+import { calculateExactAge, getTodayIso } from "./bmi";
 
 export function ProfilePage({
   user,
@@ -55,12 +51,37 @@ export function ProfilePage({
   const [todayIso] = useState(getTodayIso);
 
   const exactAge = calculateExactAge(dob);
-  const suggestion = computeBmiAndSuggestions(
-    Number(heightCm),
-    Number(weightKg),
-    gender,
-    exactAge ? exactAge.years : null,
-  );
+
+  // BMI and BMR/TDEE suggestions are computed server-side (ADR-008) with the
+  // form values as overrides; saved profile values fill any blank field.
+  const [suggestion, setSuggestion] = useState<GoalSuggestion | null>(null);
+  const suggestionSeqRef = useRef(0);
+
+  useEffect(() => {
+    const seq = ++suggestionSeqRef.current;
+    const timer = window.setTimeout(async () => {
+      const parsedHeight = heightCm.trim() ? Number(heightCm) : null;
+      const parsedWeight = weightKg.trim() ? Number(weightKg) : null;
+      try {
+        const data = await goalsApi.suggestions({
+          height_cm:
+            parsedHeight !== null && Number.isFinite(parsedHeight)
+              ? parsedHeight
+              : undefined,
+          weight_kg:
+            parsedWeight !== null && Number.isFinite(parsedWeight)
+              ? parsedWeight
+              : undefined,
+          gender: gender || undefined,
+          date_of_birth: dob || undefined,
+        });
+        if (suggestionSeqRef.current === seq) setSuggestion(data.suggestion);
+      } catch {
+        if (suggestionSeqRef.current === seq) setSuggestion(null);
+      }
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [heightCm, weightKg, gender, dob]);
 
   function applySuggestions() {
     if (!suggestion) return;
@@ -137,7 +158,10 @@ export function ProfilePage({
   }
 
   const bmiMarkerPercent = suggestion
-    ? Math.min(100, Math.max(0, ((suggestion.bmi - 14) / (36 - 14)) * 100))
+    ? Math.min(
+        100,
+        Math.max(0, ((Number(suggestion.bmi) - 14) / (36 - 14)) * 100),
+      )
     : 0;
 
   return (
@@ -381,7 +405,7 @@ export function ProfilePage({
                   <div>
                     <span className="bmi-result__label">YOUR BMI</span>
                     <strong className="bmi-result__score">
-                      {suggestion.bmi.toFixed(1)} <small>kg/m²</small>
+                      {Number(suggestion.bmi).toFixed(1)} <small>kg/m²</small>
                     </strong>
                   </div>
                   <Badge tone={suggestion.tone}>{suggestion.category}</Badge>
@@ -405,7 +429,7 @@ export function ProfilePage({
                 <p className="bmi-result__range">
                   Healthy weight range for {heightCm} cm:{" "}
                   <strong>
-                    {suggestion.healthyMinKg} – {suggestion.healthyMaxKg} kg
+                    {suggestion.healthy_min_kg} – {suggestion.healthy_max_kg} kg
                   </strong>
                 </p>
               </div>
@@ -458,7 +482,7 @@ export function ProfilePage({
                   </div>
                 </div>
                 <p className="suggestion-box__note">
-                  Calculated using your BMI ({suggestion.bmi.toFixed(1)}),
+                  Calculated using your BMI ({Number(suggestion.bmi).toFixed(1)}),
                   weight ({weightKg} kg), height ({heightCm} cm)
                   {exactAge ? `, age (${exactAge.years}y)` : ""}
                   {gender ? `, and gender (${gender})` : ""}. General estimate

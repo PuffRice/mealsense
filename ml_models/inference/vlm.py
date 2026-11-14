@@ -55,7 +55,7 @@ class ClassificationSchema(BaseModel):
 
 
 class PortionSchema(BaseModel):
-    estimated_weight_g: float = Field(gt=0.0)
+    estimated_weight_g: float | None = Field(default=None, gt=0.0)
     portion_description: str
     weight_range_g: list[float] | None = None
     fullness_multiplier: float | None = None
@@ -92,8 +92,8 @@ class MicronutrientsBlockSchema(BaseModel):
 
 class ConfidenceBreakdownSchema(BaseModel):
     food_identification: float = Field(ge=0.0, le=1.0)
-    portion_estimation: float = Field(ge=0.0, le=1.0)
-    nutrition_estimation: float = Field(ge=0.0, le=1.0)
+    portion_estimation: float | None = Field(default=None, ge=0.0, le=1.0)
+    nutrition_estimation: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class StructuredNutritionResponseSchema(BaseModel):
@@ -479,21 +479,13 @@ class MealSenseVLMService:
             except Exception as exc:
                 logger.warning("VLM JSON failed strict schema validation (%s); applying safe fallback.", exc)
 
-        # Fallback if VLM produced malformed JSON
+        # Fallback if VLM produced malformed JSON: do not fabricate visible ingredients from KB priors
         fallback = VLMVisionOutputSchema(
             dish_matches_prediction=True,
             visual_fullness_multiplier=1.0,
-            portion_confidence="medium",
-            visible_ingredients=[
-                VisibleIngredientSchema(
-                    name=ing["name"],
-                    visual_confidence=ing["conf"],
-                    estimated_volume_share=ing["ratio"],
-                )
-                for ing in kb["ingredients"]
-                if ing["identification"] == "visible"
-            ],
-            observed_preparation_state=kb["preparation"],
+            portion_confidence="low",
+            visible_ingredients=[],
+            observed_preparation_state="",
             occluded_or_uncertain=True,
         )
         return fallback, raw_text

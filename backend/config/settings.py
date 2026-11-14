@@ -14,8 +14,8 @@ if 'test' not in sys.argv:
 else:
     load_dotenv(BASE_DIR / '.env', override=False)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-change-me-before-deploying')
-DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
-if not DEBUG and SECRET_KEY == 'dev-only-change-me-before-deploying':
+DEBUG = os.environ.get('DJANGO_DEBUG', '0') == '1'
+if not DEBUG and 'test' not in sys.argv and SECRET_KEY == 'dev-only-change-me-before-deploying':
     raise RuntimeError('Set DJANGO_SECRET_KEY in production')
 ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 CSRF_TRUSTED_ORIGINS = [v for v in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',') if v]
@@ -77,6 +77,23 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
+if not DEBUG and 'test' not in sys.argv:
+    SECURE_SSL_REDIRECT = os.environ.get('DJANGO_SECURE_SSL_REDIRECT', '1') == '1'
+    SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+CACHES = {
+    'default': {
+        'BACKEND': os.environ.get(
+            'DJANGO_CACHE_BACKEND',
+            'django.core.cache.backends.locmem.LocMemCache',
+        ),
+        'LOCATION': os.environ.get('DJANGO_CACHE_LOCATION', 'mealsense-default-cache'),
+    }
+}
+
 # Switch via env: AI_PROVIDER='' (off) | 'local' | 'dinov3' | 'dinov3_vlm' | 'openai' | 'gemini'.
 _raw_ai_provider = '' if 'test' in sys.argv else os.environ.get('AI_PROVIDER', 'dinov3')
 AI_PROVIDER = _raw_ai_provider.strip().lower()
@@ -95,7 +112,7 @@ AI_DINOV3_DEVICE = os.environ.get('AI_DINOV3_DEVICE', 'auto').strip().lower()
 AI_DINOV3_TOP_K = int(os.environ.get('AI_DINOV3_TOP_K', '5'))
 AI_VLM_CHECKPOINT = os.environ.get('AI_VLM_CHECKPOINT', 'mealsense-vlm-lora').strip()
 AI_VLM_DEVICE = os.environ.get('AI_VLM_DEVICE', 'auto').strip().lower()
-AI_VLM_ENABLED = os.environ.get('AI_VLM_ENABLED', '1').strip().lower() in ('1', 'true', 'yes')
+AI_VLM_ENABLED = os.environ.get('AI_VLM_ENABLED', '0').strip().lower() in ('1', 'true', 'yes')
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
@@ -103,5 +120,5 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {'anon': '30/hour', 'user': '300/hour',
                                # Public doctor portal scopes replace the tight
                                # default anon limit on their own endpoints.
-                               'doctor_request': '20/hour', 'doctor_view': '1200/hour'},
+                               'doctor_request': '20/hour', 'doctor_view': '120/hour'},
 }

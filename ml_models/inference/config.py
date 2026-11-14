@@ -83,37 +83,45 @@ class VLMConfig:
         target = (
             checkpoint_name
             or os.environ.get("MEALSENSE_VLM_CHECKPOINT")
+            or os.environ.get("AI_VLM_CHECKPOINT")
             or self.selected_checkpoint
         ).strip()
-        if target in self.checkpoints:
-            return self.checkpoints[target]
-        # Allow passing a direct path or relative directory inside checkpoints_root
-        direct_path = resolve_project_path(target)
-        if direct_path.is_dir():
-            return VLMCheckpointSpec(
-                name=direct_path.name,
-                adapter_path=direct_path,
-                processor_fallback_path=direct_path.parent if (direct_path.parent / "processor_config.json").exists() else None,
-                base_model_id=os.environ.get("MEALSENSE_VLM_BASE_MODEL", "HuggingFaceTB/SmolVLM-500M-Instruct"),
-                local_base_model_dir=resolve_project_path(
-                    os.environ.get(
-                        "MEALSENSE_VLM_LOCAL_BASE_DIR",
-                        "../Mealsense_Models/mealsense_local_artifacts/SmolVLM-500M-Instruct",
-                    )
-                ),
-                architecture="AutoModelForImageTextToText",
-                processor_class="AutoProcessor",
-                use_peft=True,
+        if target not in self.checkpoints:
+            raise ValueError(
+                f"Unknown VLM checkpoint '{target}'. Available configured checkpoints: {list(self.checkpoints.keys())}"
             )
-        raise ValueError(
-            f"Unknown VLM checkpoint '{target}'. Available configured checkpoints: {list(self.checkpoints.keys())}"
+        spec = self.checkpoints[target]
+        adapter_path = spec.adapter_path
+        proc_fallback = spec.processor_fallback_path
+        if target in ("mealsense-vlm-lora", "checkpoint-147") and not (adapter_path / "adapter_config.json").is_file():
+            alt_rel = (
+                "backend/ml_models/checkpoints/mealsense-vlm-lora/checkpoint-147"
+                if target == "checkpoint-147"
+                else "backend/ml_models/checkpoints/mealsense-vlm-lora"
+            )
+            alt_adapter = resolve_project_path(alt_rel)
+            if (alt_adapter / "adapter_config.json").is_file():
+                adapter_path = alt_adapter
+        if proc_fallback is not None and not (proc_fallback / "processor_config.json").is_file():
+            alt_proc = resolve_project_path("backend/ml_models/checkpoints/mealsense-vlm-lora")
+            if (alt_proc / "processor_config.json").is_file():
+                proc_fallback = alt_proc
+        return VLMCheckpointSpec(
+            name=spec.name,
+            adapter_path=adapter_path,
+            processor_fallback_path=proc_fallback,
+            base_model_id=spec.base_model_id,
+            local_base_model_dir=spec.local_base_model_dir,
+            architecture=spec.architecture,
+            processor_class=spec.processor_class,
+            use_peft=spec.use_peft,
         )
 
 
 @dataclass(frozen=True, slots=True)
 class NutritionProviderConfig:
     provider: str = "fctb_2013"
-    sqlite_db_path: Path = PROJECT_ROOT.parent / "Mealsense_Models" / "mealsense_local_artifacts" / "fctb_2013_nutrition.db"
+    sqlite_db_path: Path = ML_MODELS_DIR / "data" / "fctb_2013_nutrition.db"
     allow_remote_fallback: bool = False
 
 
@@ -219,7 +227,7 @@ def load_ml_config(config_path: str | Path | None = None) -> MealSenseMLConfig:
     nutr_raw = raw.get("nutrition", {}) or {}
     nutr_provider = os.environ.get("MEALSENSE_NUTRITION_PROVIDER") or nutr_raw.get("provider", "fctb_2013")
     nutr_db = os.environ.get("MEALSENSE_NUTRITION_DB_PATH") or nutr_raw.get(
-        "sqlite_db_path", "../Mealsense_Models/mealsense_local_artifacts/fctb_2013_nutrition.db"
+        "sqlite_db_path", "ml_models/data/fctb_2013_nutrition.db"
     )
     nutrition_cfg = NutritionProviderConfig(
         provider=str(nutr_provider).strip().lower(),

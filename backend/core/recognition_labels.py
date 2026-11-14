@@ -6,7 +6,7 @@ MODEL_CLASS_LABELS = {
     'biriyani': ('Biryani', 'biriyani', 'biriani'),
     'chickpeas': ('Chickpeas', 'chola bhuna', 'chana'),
     'egg_omlete': ('Egg omelette', 'egg omelet', 'dim bhaji'),
-    'fuchka': ('Fuchka', 'phuchka', 'pani puri'),
+    'fuchka': ('Fuchka', 'phuchka'),
     'haleem': ('Haleem', 'halim'),
     'hilsha_fish': ('Hilsa fish', 'hilsha fish', 'ilish fish'),
     'kacchi': ('Kacchi Biryani', 'kacchi', 'mutton kacchi biryani', 'biryani'),

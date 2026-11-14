@@ -5,6 +5,8 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
   forwardRef,
+  useEffect,
+  useRef,
 } from "react";
 import { motion, type HTMLMotionProps } from "framer-motion";
 import {
@@ -174,6 +176,68 @@ export function GlassModal({
   className?: string;
   children: ReactNode;
 }) {
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const modalEl = modalRef.current;
+    if (modalEl) {
+      const focusable = modalEl.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusable.length > 0) {
+        focusable[0].focus();
+      } else {
+        modalEl.focus();
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key === "Tab" && modalRef.current) {
+        const focusable = Array.from(
+          modalRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        if (focusable.length === 0) {
+          event.preventDefault();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey) {
+          if (document.activeElement === first || !modalRef.current.contains(document.activeElement)) {
+            event.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last || !modalRef.current.contains(document.activeElement)) {
+            event.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
+    };
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -187,6 +251,8 @@ export function GlassModal({
       }}
     >
       <motion.div
+        ref={modalRef}
+        tabIndex={-1}
         variants={modalMotionVariants}
         initial="initial"
         animate="animate"

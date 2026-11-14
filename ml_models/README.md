@@ -38,7 +38,9 @@ Two checkpoint directories were inspected in `qwen_vlm_integration/` and `D:\CS\
 | **Base Model** | `HuggingFaceTB/SmolVLM-500M-Instruct` | `HuggingFaceTB/SmolVLM-500M-Instruct` | Untrained placeholder (`Qwen/Qwen2.5-VL-3B-Instruct` in base cache) |
 | **Adapter Weights** | `adapter_model.safetensors` (38.35 MB, SHA256 `E333F6...`) | Identical `adapter_model.safetensors` (SHA256 `E333F6...`) | None |
 | **Processor / Tokenizer Files** | **Included** (`processor_config.json`, `tokenizer.json`, `tokenizer_config.json`, `chat_template.jinja`) | **Not included** (contains trainer state `optimizer.pt`, `scheduler.pt`, `trainer_state.json`) | None |
-| **Validation Loss** | `0.005374` (Epoch 3.0, Step 147) | `0.005374` (Epoch 3.0, Step 147) | N/A |
+| **Validation Loss** | `0.005374` (Epoch 3.0, Step 147, ~63 eval samples; teacher-forced JSON token loss only) | `0.005374` (Epoch 3.0, Step 147) | N/A |
+
+> **Evaluation & Calibration Note:** `eval_loss: 0.005374` reflects next-token cross-entropy on the structured JSON validation split (~63 examples) and is **not** a calibrated benchmark of portion-weight accuracy (MAE/MAPE) or ingredient-recall F1 on an independent held-out test set. Portion weights and recipe-inferred ingredient ratios are approximate proposals that require user confirmation before logging.
 
 ### Recommended Checkpoint
 - **`mealsense-vlm-lora` (default)** is recommended because it contains the best model weights (`load_best_model_at_end=True` at step 147) **plus** all required `Idefics3Processor` and tokenizer configuration files in the same directory.

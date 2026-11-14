@@ -1,7 +1,6 @@
 """Offline inference for the supplied DINOv3 dish classifier."""
 from functools import lru_cache
 from io import BytesIO
-import json
 import logging
 from pathlib import Path
 from threading import Lock
@@ -9,6 +8,7 @@ from threading import Lock
 from django.conf import settings
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from ml_models.inference.classifier import _load_cached_classifier, get_checkpoint_sha256_tag
 from .recognition_labels import model_display_name
 
 logger = logging.getLogger(__name__)
@@ -20,54 +20,27 @@ def _model_dir():
     return path if path.is_absolute() else settings.BASE_DIR / path
 
 
+def _resolve_checkpoint_in_dir(root: Path) -> Path:
+    ckpt = root / 'checkpoint.pth'
+    if ckpt.is_file():
+        return ckpt
+    alt = settings.BASE_DIR.parent / 'ml_models' / 'classifier' / 'dinov3_dish_best.pth'
+    if alt.is_file():
+        return alt
+    return ckpt
+
+
 @lru_cache(maxsize=1)
 def _load_model(directory, device_name):
-    import torch
-    from torch import nn
-    from torchvision import transforms
-    from transformers import AutoConfig, AutoModel
-
     root = Path(directory)
-    with (root / 'classes.json').open(encoding='utf-8') as source:
-        labels = json.load(source)
-    with (root / 'config.json').open(encoding='utf-8') as source:
-        inference_config = json.load(source)
-    if (not isinstance(labels, list) or not labels or len(set(labels)) != len(labels)
-            or any(not isinstance(label, str) or not label.strip() for label in labels)
-            or inference_config.get('image_size') != 224):
-        raise ValueError('Invalid DINOv3 deployment metadata')
-    checkpoint = torch.load(root / 'checkpoint.pth', map_location='cpu', weights_only=True)
-    if checkpoint['dish_to_idx'] != {label: index for index, label in enumerate(labels)}:
-        raise ValueError('Checkpoint class mapping differs from deployment mapping')
-    if checkpoint['image_size'] != inference_config['image_size']:
-        raise ValueError('Checkpoint image size differs from deployment config')
-
-    backbone_config = AutoConfig.from_pretrained(str(root / 'backbone_config.json'), local_files_only=True)
-    backbone = AutoModel.from_config(backbone_config)
-
-    class DINOClassifier(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.backbone = backbone
-            self.head = nn.Sequential(nn.LayerNorm(backbone.config.hidden_size),
-                                      nn.Dropout(0.25), nn.Linear(backbone.config.hidden_size, len(labels)))
-
-        def forward(self, pixel_values):
-            return self.head(self.backbone(pixel_values=pixel_values).last_hidden_state[:, 0])
-
-    model = DINOClassifier()
-    model.load_state_dict(checkpoint['state_dict'], strict=True)
-    if device_name == 'auto':
-        device_name = 'cuda' if torch.cuda.is_available() else 'cpu'
-    if device_name not in ('cpu', 'cuda') or (device_name == 'cuda' and not torch.cuda.is_available()):
-        raise ValueError('Requested inference device is unavailable')
-    device = torch.device(device_name)
-    model.to(device).eval()
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)), transforms.ToTensor(),
-        transforms.Normalize(inference_config['normalization_mean'], inference_config['normalization_std']),
-    ])
-    return model, transform, tuple(labels), device
+    ckpt_path = _resolve_checkpoint_in_dir(root)
+    return _load_cached_classifier(
+        str(ckpt_path),
+        str(root / 'backbone_config.json'),
+        str(root / 'classes.json'),
+        str(root / 'config.json'),
+        device_name,
+    )
 
 
 def predict_food(image, top_k=None):
@@ -114,7 +87,9 @@ def recognize_dinov3(image_bytes):
     except Exception:
         logger.exception('DINOv3 recognition failed')
         return {'status': 'failed', 'candidates': [], 'model_version': '', 'error_code': 'LOCAL_MODEL_ERROR'}
-    return {'status': 'completed', 'model_version': 'local:dinov3', 'error_code': '',
+    ckpt_tag = get_checkpoint_sha256_tag(str(_resolve_checkpoint_in_dir(_model_dir().resolve())))
+    model_version = f'local:dinov3:{ckpt_tag}' if ckpt_tag != 'untracked' else 'local:dinov3'
+    return {'status': 'completed', 'model_version': model_version, 'error_code': '',
             'candidates': [{'name': model_display_name(item['food_name']), 'model_label': item['food_name'],
                             'category': 'Dish', 'confidence': round(item['confidence'], 3), 'food_id': None}
                            for item in predictions]}

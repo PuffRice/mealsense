@@ -8,6 +8,7 @@ Reproduces the exact architecture and preprocessing from the training notebook:
 from __future__ import annotations
 
 from functools import lru_cache
+import hashlib
 from io import BytesIO
 import json
 import logging
@@ -21,6 +22,19 @@ from .config import ClassifierConfig, load_ml_config, resolve_project_path
 
 logger = logging.getLogger(__name__)
 _classifier_lock = Lock()
+
+
+@lru_cache(maxsize=8)
+def get_checkpoint_sha256_tag(checkpoint_path: str) -> str:
+    """Return a 16-char SHA-256 digest tag for a checkpoint artifact."""
+    path = Path(checkpoint_path)
+    if not path.is_file():
+        return "untracked"
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()[:16]
 
 
 class ClassifierError(RuntimeError):
@@ -183,7 +197,6 @@ def open_and_validate_image(
         raise InvalidImageError("Unsupported image input type.")
 
     try:
-        Image.MAX_IMAGE_PIXELS = max_pixels
         with Image.open(source) as opened:
             fmt = (opened.format or "").upper()
             if fmt not in allowed_formats:
@@ -273,10 +286,13 @@ class DINOv3FoodClassifier:
         best = top_predictions[0]
         is_low_confidence = best["confidence"] < self.cfg.confidence_threshold
         requires_confirmation = best["confidence"] < self.cfg.confirmation_threshold
+        ckpt, _, _, _ = _resolve_checkpoint_and_metadata(self.cfg)
+        ckpt_tag = get_checkpoint_sha256_tag(str(ckpt.resolve()))
 
         return {
             "predicted_food": best["label"],
             "confidence": best["confidence"],
+            "model_version": f"local:dinov3:{ckpt_tag}" if ckpt_tag != "untracked" else "local:dinov3",
             "is_low_confidence": is_low_confidence,
             "requires_confirmation": requires_confirmation,
             "top_predictions": [

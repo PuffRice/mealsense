@@ -16,29 +16,30 @@ classifier:
   confirmation_threshold: 0.65
 
 vlm:
-  # Selected checkpoint alias ("mealsense-vlm-lora", "checkpoint-147", or "mealsense-qwen-vl-lora")
+  # Selected checkpoint alias ("mealsense-vlm-lora" or "checkpoint-147")
   selected_checkpoint: "mealsense-vlm-lora"
-  checkpoints_root: "ml_models/checkpoints"
+  checkpoints_root: "qwen_vlm_integration"
   checkpoints:
     mealsense-vlm-lora:
-      adapter_path: "ml_models/checkpoints/mealsense-vlm-lora"
+      adapter_path: "qwen_vlm_integration/mealsense-vlm-lora"
+      processor_fallback_path: "backend/ml_models/checkpoints/mealsense-vlm-lora"
       base_model_id: "HuggingFaceTB/SmolVLM-500M-Instruct"
-      local_base_model_dir: "../Mealsense_Models/mealsense_local_artifacts/SmolVLM-500M-Instruct"
+      local_base_model_dir: "ml_models/checkpoints/SmolVLM-500M-Instruct"
       architecture: "Idefics3ForConditionalGeneration"
       processor_class: "Idefics3Processor"
       use_peft: true
     checkpoint-147:
-      adapter_path: "ml_models/checkpoints/mealsense-vlm-lora/checkpoint-147"
-      processor_fallback_path: "ml_models/checkpoints/mealsense-vlm-lora"
+      adapter_path: "qwen_vlm_integration/mealsense-vlm-lora/checkpoint-147"
+      processor_fallback_path: "qwen_vlm_integration/mealsense-vlm-lora"
       base_model_id: "HuggingFaceTB/SmolVLM-500M-Instruct"
-      local_base_model_dir: "../Mealsense_Models/mealsense_local_artifacts/SmolVLM-500M-Instruct"
+      local_base_model_dir: "ml_models/checkpoints/SmolVLM-500M-Instruct"
       architecture: "Idefics3ForConditionalGeneration"
       processor_class: "Idefics3Processor"
       use_peft: true
     mealsense-qwen-vl-lora:
       adapter_path: "ml_models/checkpoints/mealsense-qwen-vl-lora"
       base_model_id: "Qwen/Qwen2.5-VL-3B-Instruct"
-      local_base_model_dir: "../Mealsense_Models/mealsense_local_artifacts/base_model/models--Qwen--Qwen2.5-VL-3B-Instruct"
+      local_base_model_dir: "ml_models/checkpoints/Qwen2.5-VL-3B-Instruct"
       architecture: "Qwen2_5_VLForConditionalGeneration"
       processor_class: "Qwen2_5_VLProcessor"
       use_peft: true
@@ -64,5 +65,5 @@ vlm:
 
 nutrition:
   provider: "fctb_2013" # "fctb_2013", "django_catalog", or "none"
-  sqlite_db_path: "../Mealsense_Models/mealsense_local_artifacts/fctb_2013_nutrition.db"
+  sqlite_db_path: "ml_models/data/fctb_2013_nutrition.db"
   allow_remote_fallback: false

@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import re
+import secrets
 import urllib.error
 import urllib.request
 from io import BytesIO
@@ -19,15 +20,19 @@ from django.utils import timezone as django_timezone
 from django.utils.dateparse import parse_date
 from rest_framework.exceptions import ValidationError
 from rest_framework.exceptions import APIException
-from .models import (DoctorAccessRequest, Food, FoodImage, FoodNutrition, FoodPrediction, FoodServing,
-                     IdempotencyRecord, Meal, MealItem, MediaDeletionJob,
-                     NutrientTarget, NutritionGoal, NutritionRecord, NutritionSource,
-                     Profile, RecognitionResult, User)
+from .models import (DailyNutritionSummary, DoctorAccessRequest, Food, FoodImage, FoodLog,
+                     FoodNutrition, FoodPrediction, FoodServing, IdempotencyRecord, Meal,
+                     MealItem, MediaDeletionJob, ModelVersion, NutrientTarget, NutritionGoal,
+                     NutritionRecord, NutritionSource, Profile, RecognitionResult, User,
+                     doctor_access_token as generate_doctor_access_token)
 from .recognition_labels import model_search_names
 
 logger = logging.getLogger(__name__)
 
 TWO = Decimal('0.01')
+NUTRIENT_KEYS = ('kcal', 'protein_g', 'carbs_g', 'fat_g')
+FOOD_100G_FIELDS = {'kcal': 'kcal_100g', 'protein_g': 'protein_100g',
+                    'carbs_g': 'carbs_100g', 'fat_g': 'fat_100g'}
 
 # --- Recognition adapters ---
 # Kept here so RecognitionsView only depends on this one entry point.
@@ -209,33 +214,13 @@ def recognize_with_provider(image_bytes, mime):
 
 
 def _attach_candidate_nutrition(res):
-    """Ensure every candidate and top-level response includes grounded nutrition analysis when available."""
+    """Attach explicit VLM analysis to the top candidate without fabricating estimates for unanalyzed labels."""
     if not isinstance(res, dict) or res.get('status') != 'completed':
         return res
-    try:
-        from ml_models.inference.nutrition import NutritionValidationProvider
-        provider = NutritionValidationProvider()
-    except Exception:
-        return res
-
     candidates = res.get('candidates') or []
     top_analysis = res.get('analysis')
-    for idx, cand in enumerate(candidates):
-        if not isinstance(cand, dict):
-            continue
-        if idx == 0 and top_analysis and not cand.get('analysis'):
-            cand['analysis'] = top_analysis
-        if not cand.get('analysis'):
-            raw_label = cand.get('model_label') or cand.get('name', '')
-            display_name = cand.get('name', '')
-            conf = float(cand.get('confidence', 0.8))
-            est = provider.estimate_for_any_label(raw_label, display_name, conf)
-            if est is not None:
-                cand['analysis'] = est
-                if idx == 0 and top_analysis is None:
-                    top_analysis = est
-    if top_analysis is not None:
-        res['analysis'] = top_analysis
+    if top_analysis and candidates and isinstance(candidates[0], dict) and not candidates[0].get('analysis'):
+        candidates[0]['analysis'] = top_analysis
     return res
 
 
@@ -317,8 +302,23 @@ def recognize_dinov3_vlm(image_bytes):
     }
 
 
+def validate_vlm_checkpoint_name(checkpoint_name):
+    """Validate an optional VLM checkpoint name against the configured allowlist."""
+    if checkpoint_name in (None, ''):
+        return getattr(settings, 'AI_VLM_CHECKPOINT', 'mealsense-vlm-lora')
+    clean = str(checkpoint_name).strip()
+    try:
+        from ml_models.inference.config import load_ml_config
+        allowed = set(load_ml_config().vlm.checkpoints.keys())
+    except Exception:
+        allowed = {'mealsense-vlm-lora', 'checkpoint-147', 'mealsense-qwen-vl-lora'}
+    if clean not in allowed:
+        raise ValidationError({'checkpoint': f"Unknown VLM checkpoint '{clean}'."})
+    return clean
+
+
 def ensure_analyzed_catalog_foods(user, analysis):
-    """Ensure verified FCTB 2013 ingredient Food records and dish Food record exist for logging."""
+    """Ensure user-scoped FCTB 2013 ingredient Food records exist for logging without mutating shared catalog rows."""
     from ml_models.inference.nutrition import NutritionValidationProvider
 
     provider = NutritionValidationProvider()
@@ -328,7 +328,7 @@ def ensure_analyzed_catalog_foods(user, analysis):
             name='FCTB 2013 - INFS, University of Dhaka',
             defaults={
                 'reference': 'Food Composition Table for Bangladesh (INFS, DU, 2013)',
-                'is_trusted': True,
+                'is_trusted': False,
             },
         )
         for ing in analysis.get('ingredients', []):
@@ -344,18 +344,18 @@ def ensure_analyzed_catalog_foods(user, analysis):
             fat_100g = (Decimal(str(rec.fat_g_100g)) / Decimal(str(yield_factor))).quantize(TWO, rounding=ROUND_HALF_UP)
 
             food_obj, _ = Food.objects.get_or_create(
-                created_by=None,
+                created_by=user,
                 name=rec.display_name[:120],
                 defaults={
-                    'category': 'Ingredient (FCTB 2013)',
+                    'category': 'Ingredient (FCTB 2013 derived)',
                     'is_active': True,
-                    'is_verified': True,
+                    'is_verified': False,
                     'kcal_100g': kcal_100g,
                     'protein_100g': prot_100g,
                     'carbs_100g': carb_100g,
                     'fat_100g': fat_100g,
                     'source': rec.source_citation[:160],
-                    'source_ref': f'FCTB Code {rec.fctb_code}',
+                    'source_ref': f'FCTB Code {rec.fctb_code} (yield factor {yield_factor})',
                 },
             )
             if food_obj.kcal_100g is None:
@@ -366,7 +366,7 @@ def ensure_analyzed_catalog_foods(user, analysis):
                 food_obj.save(update_fields=['kcal_100g', 'protein_100g', 'carbs_100g', 'fat_100g'])
 
             if not NutritionRecord.objects.filter(food=food_obj, version=1).exists():
-                nutr_rec = NutritionRecord.objects.create(
+                NutritionRecord.objects.create(
                     food=food_obj,
                     source=fctb_source,
                     version=1,
@@ -377,11 +377,15 @@ def ensure_analyzed_catalog_foods(user, analysis):
                         'protein_g': str(prot_100g),
                         'carbs_g': str(carb_100g),
                         'fat_g': str(fat_100g),
+                        'raw_kcal_100g': str(rec.calories_kcal_100g),
+                        'raw_protein_g_100g': str(rec.protein_g_100g),
+                        'raw_carbs_g_100g': str(rec.carbohydrates_g_100g),
+                        'raw_fat_g_100g': str(rec.fat_g_100g),
+                        'cooking_yield_factor': str(yield_factor),
                     },
-                    verification_status='approved',
+                    verification_status='user_supplied',
                     calculation_method=f'FCTB 2013 raw-to-cooked yield factor {yield_factor}',
                 )
-                FoodNutrition.objects.get_or_create(food=food_obj, defaults={'active_record': nutr_rec})
 
             ingredient_foods[ing.get('name')] = food_obj
 
@@ -487,9 +491,7 @@ def nutrient_snapshot(food: Food, grams: Decimal):
         record = (NutritionRecord.objects.filter(food=food, verification_status='user_supplied')
                   .select_related('source').order_by('-version').first())
     else:
-        # Legacy values remain usable until a reviewer selects an approved
-        # record. A newly imported draft must never silently become current.
-        record = (NutritionRecord.objects.filter(food=food, version=1)
+        record = (NutritionRecord.objects.filter(food=food, version=1, verification_status='approved')
                   .select_related('source').first())
     values = record.nutrient_values if record else {
         'kcal': str(food.kcal_100g) if food.kcal_100g is not None else None,
@@ -513,6 +515,204 @@ def nutrient_snapshot(food: Food, grams: Decimal):
         'nutrition_basis_snapshot': f'per {basis_quantity} {record.basis_unit}' if record else 'per 100 g edible',
         'calculation_version': 'v3-1',
     }
+
+
+def catalog_per_100g_values(food):
+    """Per-100 g nutrient values for a food using the same provenance as
+    nutrient_snapshot, but tolerating missing values (None instead of raising).
+    Values are normalized to a per-100 g basis when the record basis differs.
+    """
+    current = FoodNutrition.objects.filter(food=food).select_related('active_record__source').first()
+    if current:
+        record = current.active_record
+    elif food.created_by_id:
+        record = (NutritionRecord.objects.filter(food=food, verification_status='user_supplied')
+                  .select_related('source').order_by('-version').first())
+    else:
+        record = (NutritionRecord.objects.filter(food=food, version=1, verification_status='approved')
+                  .select_related('source').first())
+    if record:
+        basis = record.basis_quantity if record.basis_quantity else Decimal('100')
+        factor = Decimal('100') / basis
+        return {name: (None if record.nutrient_values.get(name) is None
+                       else Decimal(str(record.nutrient_values[name])) * factor)
+                for name in NUTRIENT_KEYS}
+    return {name: (None if getattr(food, field) is None else Decimal(str(getattr(food, field))))
+            for name, field in FOOD_100G_FIELDS.items()}
+
+
+def compute_nutrition_preview(user, items):
+    """Server-side per-item and meal-total nutrient preview (ADR-008/ADR-012).
+
+    Mirrors nutrient_snapshot()'s provenance-aware lookup but tolerates missing
+    values: unknown nutrients propagate as None, never zero ("unknown is not
+    zero"). Each item is either a catalog food reference ({food_id, grams}) or
+    inline per-100 g values for a food being composed.
+    """
+    food_ids = [item['food_id'] for item in items if item.get('food_id')]
+    foods = {}
+    if food_ids:
+        queryset = Food.objects.filter(
+            Q(created_by=user) | Q(created_by__isnull=True), is_active=True, id__in=food_ids,
+        ).select_related('current_nutrition__active_record__source')
+        foods = {food.id: food for food in queryset}
+    rows = []
+    totals = {name: Decimal('0') for name in NUTRIENT_KEYS}
+    unknown = {name: False for name in NUTRIENT_KEYS}
+    for item in items:
+        grams = Decimal(str(item['grams']))
+        food_id = item.get('food_id')
+        if food_id:
+            food = foods.get(food_id)
+            if food is None:
+                raise ValidationError({'items': 'Food not found or not available to you.'})
+            values = catalog_per_100g_values(food)
+            source = food.source
+        else:
+            values = {name: item.get(FOOD_100G_FIELDS[name]) for name in NUTRIENT_KEYS}
+            source = 'Inline per-100 g values'
+        row = {'key': str(item.get('key') or ''), 'grams': str(grams.quantize(TWO)),
+               'food_id': str(food_id) if food_id else None, 'source': source}
+        for name in NUTRIENT_KEYS:
+            per_100g = values[name]
+            if per_100g is None:
+                row[name] = None
+                unknown[name] = True
+            else:
+                amount = (Decimal(str(per_100g)) * grams / Decimal('100')).quantize(TWO, rounding=ROUND_HALF_UP)
+                row[name] = str(amount)
+                totals[name] += amount
+        rows.append(row)
+    return {
+        'items': rows,
+        'totals': {name: (None if unknown[name] else str(totals[name])) for name in NUTRIENT_KEYS},
+        'pending': unknown['kcal'],
+    }
+
+
+def compute_goal_suggestions(height_cm, weight_kg, gender, age_years):
+    """BMI category plus Mifflin-St Jeor energy/macronutrient suggestions.
+
+    Server-side port of the former client calculator (ADR-008/ADR-012); the
+    rounding and clamps are kept identical so previously displayed numbers do
+    not drift. These are general estimates, not medical assessments.
+    """
+    if height_cm is None or weight_kg is None:
+        return None
+    if not Decimal('50') <= height_cm <= Decimal('260') or not Decimal('20') <= weight_kg <= Decimal('350'):
+        return None
+    height_m = height_cm / Decimal('100')
+    bmi_raw = weight_kg / (height_m * height_m)
+    healthy_min = (Decimal('18.5') * height_m * height_m).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+    healthy_max = (Decimal('24.9') * height_m * height_m).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
+    effective_age = age_years if age_years is not None and age_years >= 10 else 25
+    gender_offset = {'male': Decimal('5'), 'female': Decimal('-161')}.get(gender or '', Decimal('-78'))
+    bmr = Decimal('10') * weight_kg + Decimal('6.25') * height_cm - Decimal('5') * effective_age + gender_offset
+    tdee = bmr * Decimal('1.375')
+    if bmi_raw < Decimal('18.5'):
+        category, tone = 'Underweight', 'peach'
+        focus = 'Gentle calorie surplus (+300 kcal) to support healthy weight gain.'
+        target_kcal, protein_per_kg, fat_share = tdee + Decimal('300'), Decimal('1.8'), Decimal('0.28')
+    elif bmi_raw < Decimal('25'):
+        category, tone = 'Healthy weight', 'green'
+        focus = 'Balanced maintenance energy for your current BMI.'
+        target_kcal, protein_per_kg, fat_share = tdee, Decimal('1.6'), Decimal('0.28')
+    elif bmi_raw < Decimal('30'):
+        category, tone = 'Overweight', 'peach'
+        focus = 'Gentle deficit (-300 kcal) with higher protein for steady progress.'
+        target_kcal, protein_per_kg, fat_share = tdee - Decimal('300'), Decimal('1.8'), Decimal('0.27')
+    else:
+        category, tone = 'Obese', 'peach'
+        focus = 'Supportive calorie deficit (-450 kcal) prioritizing protein satiety.'
+        target_kcal, protein_per_kg, fat_share = tdee - Decimal('450'), Decimal('1.6'), Decimal('0.26')
+    kcal = ((min(Decimal('4000'), max(Decimal('1200'), target_kcal)) / Decimal('10'))
+            .quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal('10'))
+    protein_g = (min(kcal * Decimal('0.35') / Decimal('4'), max(Decimal('50'), weight_kg * protein_per_kg))
+                 .quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    fat_g = (kcal * fat_share / Decimal('9')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    remaining = max(Decimal('0'), kcal - protein_g * Decimal('4') - fat_g * Decimal('9'))
+    carbs_g = (remaining / Decimal('4')).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    bmi = (bmi_raw * Decimal('10')).quantize(Decimal('1'), rounding=ROUND_HALF_UP) / Decimal('10')
+    return {
+        'bmi': str(bmi), 'category': category, 'tone': tone, 'focus': focus,
+        'healthy_min_kg': str(healthy_min), 'healthy_max_kg': str(healthy_max),
+        'kcal': int(kcal), 'protein_g': int(protein_g), 'carbs_g': int(carbs_g), 'fat_g': int(fat_g),
+    }
+
+
+def per_100g_from_analysis(analysis):
+    """Derive per-100 g values from an already-validated VLM analysis.
+
+    Keeps the portion-weight division server-side (ADR-008) so the client no
+    longer derives catalog values from per-portion numbers. Unknown values
+    stay None ("unknown is not zero"). Returns None when the analysis has no
+    usable estimated portion weight.
+    """
+    if not isinstance(analysis, dict):
+        return None
+    nutrition = analysis.get('nutrition') or {}
+    portion = analysis.get('portion') or {}
+    weight = portion.get('estimated_weight_g')
+    if weight is None:
+        return None
+    weight = Decimal(str(weight))
+    if weight <= 0:
+        return None
+    factor = Decimal('100') / weight
+    result = {}
+    for source_key, target_key in (('calories_kcal', 'kcal_100g'), ('protein_g', 'protein_100g'),
+                                   ('carbohydrates_g', 'carbs_100g'), ('fat_g', 'fat_100g')):
+        value = nutrition.get(source_key)
+        if value is None:
+            result[target_key] = None
+        else:
+            result[target_key] = str(max(Decimal('0'), (Decimal(str(value)) * factor)
+                                         .quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)))
+    return result
+
+
+def calculate_meals_totals(meals):
+    values = {'kcal': Decimal('0'), 'protein_g': Decimal('0'), 'carbs_g': Decimal('0'), 'fat_g': Decimal('0')}
+    for meal in meals:
+        for item in meal.items.all():
+            for name in values:
+                values[name] += getattr(item, name)
+    return {key: str(value) for key, value in values.items()}
+
+
+def refresh_daily_summary_for_meal(user, eaten_at):
+    if eaten_at is None:
+        return None
+    tz = patient_timezone(user)
+    local_date = django_timezone.localtime(eaten_at, tz).date()
+    start, end = date_window(local_date.isoformat(), tz.key)
+    meals = list(Meal.objects.filter(user=user, eaten_at__gte=start, eaten_at__lt=end).prefetch_related('items'))
+    totals_dict = calculate_meals_totals(meals)
+    summary, _ = DailyNutritionSummary.objects.update_or_create(
+        user=user,
+        summary_date=local_date,
+        defaults={
+            'meal_count': len(meals),
+            'kcal': Decimal(totals_dict['kcal']),
+            'protein_g': Decimal(totals_dict['protein_g']),
+            'carbs_g': Decimal(totals_dict['carbs_g']),
+            'fat_g': Decimal(totals_dict['fat_g']),
+            'calculation_version': 'v1',
+            'computed_at': django_timezone.now(),
+        },
+    )
+    return summary
+
+
+def record_food_log(user, meal, action, previous_values=None, new_values=None, meal_id_snapshot=None):
+    FoodLog.objects.create(
+        user=user,
+        meal=meal,
+        meal_id_snapshot=meal.id if meal is not None else meal_id_snapshot,
+        action=action,
+        previous_values=previous_values,
+        new_values=new_values,
+    )
 
 
 @transaction.atomic
@@ -600,7 +800,63 @@ def create_meal(user, data):
         operation.meal = meal
         operation.response_snapshot = response_snapshot
         operation.save(update_fields=['meal', 'response_snapshot'])
+    record_food_log(user, meal, action='created', new_values=response_snapshot)
+    refresh_daily_summary_for_meal(user, meal.eaten_at)
     return meal, True, response_snapshot
+
+
+@transaction.atomic
+def update_meal_for_user(user, meal_id, data):
+    from .serializers import MealSerializer
+    meal = Meal.objects.select_for_update().prefetch_related('items').get(pk=meal_id, user=user)
+    if data.get('version') != meal.version:
+        return None, json.loads(json.dumps(MealSerializer(meal).data, cls=DjangoJSONEncoder))
+    previous_snapshot = json.loads(json.dumps(MealSerializer(meal).data, cls=DjangoJSONEncoder))
+    previous_eaten_at = meal.eaten_at
+    meal.eaten_at, meal.meal_type = data['eaten_at'], data['meal_type']
+    meal.notes = data.get('notes', '')
+    meal.image = owned_image(user, data.get('image_id'))
+    meal.version += 1
+    meal.save()
+    replace_meal_items(meal, data['items'])
+    new_snapshot = json.loads(json.dumps(MealSerializer(meal).data, cls=DjangoJSONEncoder))
+    record_food_log(user, meal, action='updated', previous_values=previous_snapshot, new_values=new_snapshot)
+    refresh_daily_summary_for_meal(user, previous_eaten_at)
+    refresh_daily_summary_for_meal(user, meal.eaten_at)
+    return meal, new_snapshot
+
+
+@transaction.atomic
+def delete_meal_for_user(user, meal):
+    from .serializers import MealSerializer
+    previous_snapshot = json.loads(json.dumps(MealSerializer(meal).data, cls=DjangoJSONEncoder))
+    meal_id_val = meal.id
+    eaten_at = meal.image and meal.eaten_at or meal.eaten_at
+    image = meal.image
+    record_food_log(user, None, action='deleted', previous_values=previous_snapshot, meal_id_snapshot=meal_id_val)
+    meal.delete()
+    if image and not Meal.objects.filter(image=image).exists():
+        delete_private_image(user, image.id)
+    refresh_daily_summary_for_meal(user, eaten_at)
+
+
+def prune_expired_records(idempotency_days=7, orphan_image_hours=24):
+    now = django_timezone.now()
+    idem_cutoff = now - timedelta(days=idempotency_days)
+    deleted_idem, _ = IdempotencyRecord.objects.filter(created_at__lt=idem_cutoff).delete()
+    img_cutoff = now - timedelta(hours=orphan_image_hours)
+    orphan_images = list(
+        FoodImage.objects.filter(
+            created_at__lt=img_cutoff,
+            meal__isnull=True,
+            foodprediction__isnull=True,
+        )
+    )
+    orphan_count = 0
+    for img in orphan_images:
+        if delete_private_image(img.user, img.id):
+            orphan_count += 1
+    return {'idempotency_records': deleted_idem, 'orphan_images': orphan_count}
 
 
 GOAL_FIELDS = {
@@ -616,7 +872,10 @@ def goal_values_for_user(user):
     if goal is None:
         return None
     targets = {target.nutrient_name: target.target_value for target in goal.targets.all()}
-    return {field: int(targets.get(nutrient, 0)) for field, (nutrient, _) in GOAL_FIELDS.items()}
+    return {
+        field: (int(targets[nutrient]) if nutrient in targets else None)
+        for field, (nutrient, _) in GOAL_FIELDS.items()
+    }
 
 
 @transaction.atomic
@@ -776,8 +1035,14 @@ def create_doctor_access_request(patient, doctor_name, identifier_type, identifi
 def doctor_request_for_token(token):
     if not token:
         return None
-    return (DoctorAccessRequest.objects.filter(view_token=str(token).strip()[:64])
-            .select_related('patient').first())
+    clean = str(token).strip()
+    if not (16 <= len(clean) <= 64):
+        return None
+    req = (DoctorAccessRequest.objects.filter(view_token=clean)
+           .select_related('patient').first())
+    if req is None or not secrets.compare_digest(req.view_token, clean):
+        return None
+    return req
 
 
 @transaction.atomic
@@ -790,11 +1055,19 @@ def decide_doctor_access_request(access_request, action, user):
         if locked.status not in (DoctorAccessRequest.STATUS_PENDING, DoctorAccessRequest.STATUS_DENIED,
                                  DoctorAccessRequest.STATUS_REVOKED) and not expired:
             raise ValidationError({'action': 'This request can no longer be approved.'})
+        was_revoked = locked.status == DoctorAccessRequest.STATUS_REVOKED
         locked.status = DoctorAccessRequest.STATUS_APPROVED
         locked.approved_at = now
         locked.denied_at = None
         locked.revoked_at = None
         locked.expires_at = now + timedelta(hours=DOCTOR_ACCESS_HOURS)
+        if was_revoked:
+            # A revoked share must never come back to life with its old token:
+            # rotation invalidates every copy the doctor received before, so a
+            # leaked token cannot be resurrected by re-approval. To regain
+            # access, the doctor requests it again and receives the new token
+            # in the creation response.
+            locked.view_token = generate_doctor_access_token()
     elif action == 'deny':
         if locked.status != DoctorAccessRequest.STATUS_PENDING:
             raise ValidationError({'action': 'Only a pending request can be denied.'})

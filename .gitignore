@@ -8,6 +8,7 @@ backend/private_media/
 backend/model_artifacts/
 backend/ml_models/checkpoints/
 backend/ml_models/classifier/*.pth
+backend/ml_models/dinov3/*.pth
 ml_models/checkpoints/
 ml_models/classifier/*.pth
 dinov3_integration/*.pth
@@ -16,6 +17,13 @@ dinov3_integration/dinov3_offline_model/
 qwen_vlm_integration/*/adapter_model.safetensors
 qwen_vlm_integration/*/*/adapter_model.safetensors
 qwen_vlm_integration/*/*/optimizer.pt
+qwen_vlm_integration/*/*/rng_state.pth
+qwen_vlm_integration/*/*/scheduler.pt
+qwen_vlm_integration/*/*/training_args.bin
+scrapper/.venv/
+scrapper/facebook_group_dataset/
+tmp/
+output/
 **/__pycache__/
 *.pyc
 .env

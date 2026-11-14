@@ -30,21 +30,6 @@ def _ensure_test_image(image_arg: str) -> tuple[Path, tempfile.TemporaryDirector
     if path.is_file():
         return path, None
 
-    # Check if there is a sample image in Mealsense_Models dataset
-    fallback_candidates = [
-        PROJECT_ROOT.parent / "Mealsense_Models" / "mealsense_local_artifacts" / "dataset" / "images" / "kacchi_biryani_01.jpg",
-        PROJECT_ROOT.parent / "Mealsense_Models" / "food_dataset" / "train" / "kacchi",
-    ]
-    for cand in fallback_candidates:
-        if cand.is_file():
-            print(f"[INFO] '{image_arg}' not found; using sample food image: {cand}")
-            return cand, None
-        if cand.is_dir():
-            imgs = sorted(cand.glob("*.jpg"))
-            if imgs:
-                print(f"[INFO] '{image_arg}' not found; using sample food image: {imgs[0]}")
-                return imgs[0], None
-
     # Synthesize a temporary RGB food test image if path doesn't exist
     tmp_dir = tempfile.TemporaryDirectory()
     synth_path = Path(tmp_dir.name) / "synthetic_test_food.jpg"

@@ -6,18 +6,50 @@ import type {
   DoctorHistory,
   DoctorStatus,
   Food,
+  GoalSuggestion,
+  GoalSuggestionOverrides,
   Meal,
   MealInput,
+  NutritionPreview,
+  NutritionPreviewItemInput,
   User,
   VLMAnalysis,
 } from "./types";
+
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
+function extractErrorMessage(data: unknown): string {
+  if (!data) return "Request failed.";
+  if (typeof data === "string") return data;
+  if (Array.isArray(data)) {
+    return data.length > 0 ? extractErrorMessage(data[0]) : "Request failed.";
+  }
+  if (typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    if (typeof record.error === "string") return record.error;
+    if (typeof record.detail === "string") return record.detail;
+    const values = Object.values(record);
+    if (values.length > 0) return extractErrorMessage(values[0]);
+  }
+  return "Request failed.";
+}
 
 let csrf = "";
 export async function initCsrf() {
   const response = await fetch("/api/v1/auth/csrf/", {
     credentials: "same-origin",
   });
-  if (!response.ok) throw new Error("Cannot connect to MealSense server.");
+  if (!response.ok) throw new ApiError("Cannot connect to MealSense server.", response.status);
   csrf = (await response.json()).csrfToken;
 }
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -27,27 +59,33 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!(init.body instanceof FormData) && init.body)
     headers.set("Content-Type", "application/json");
   if (method !== "GET") headers.set("X-CSRFToken", csrf);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 30000);
   let response: Response;
   try {
     response = await fetch(`/api/v1${path}`, {
       ...init,
       headers,
       credentials: "same-origin",
+      signal: init.signal ?? controller.signal,
     });
   } catch {
-    throw new Error("Connection lost. Try again when online.");
+    throw new ApiError("Connection lost. Try again when online.", 0);
+  } finally {
+    window.clearTimeout(timeoutId);
   }
   if (response.status === 204) return undefined as T;
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const first = Object.values(data)[0];
-    throw new Error(
-      typeof first === "string"
-        ? first
-        : Array.isArray(first)
-          ? String(first[0])
-          : data.error || "Request failed.",
-    );
+    if (
+      response.status === 401 &&
+      !path.startsWith("/auth/") &&
+      !path.startsWith("/doctor-access/") &&
+      path !== "/users/me/"
+    ) {
+      window.dispatchEvent(new CustomEvent("mealsense:unauthorized"));
+    }
+    throw new ApiError(extractErrorMessage(data), response.status, data);
   }
   return data as T;
 }
@@ -118,6 +156,20 @@ export const foodsApi = {
   list: (q = "") => api<Food[]>(`/foods/?q=${encodeURIComponent(q)}`),
   create: (data: Omit<Food, "id" | "source" | "is_sample">) =>
     api<Food>("/foods/", { method: "POST", body: JSON.stringify(data) }),
+};
+export const nutritionApi = {
+  preview: (items: NutritionPreviewItemInput[]) =>
+    api<NutritionPreview>("/nutrition/preview/", {
+      method: "POST",
+      body: JSON.stringify({ items }),
+    }),
+};
+export const goalsApi = {
+  suggestions: (overrides: GoalSuggestionOverrides = {}) =>
+    api<{ suggestion: GoalSuggestion | null }>("/goals/suggestions/", {
+      method: "POST",
+      body: JSON.stringify(overrides),
+    }),
 };
 export const doctorAccessApi = {
   list: () => api<DoctorAccessRequest[]>("/doctor-access/requests/"),
