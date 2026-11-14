@@ -13,7 +13,7 @@
 > renumbered accordingly, and scrapper-related items in the mixed issues (#31
 > test coverage, #34 committed junk) were trimmed.
 >
-> **Verification baseline (2026-11-15):** backend `manage.py test core` — 74 tests
+> **Verification baseline (2026-11-15):** backend `manage.py test core` — 75 tests
 > OK (1 skipped, up from 48 at audit time); frontend `npm run build` — passes.
 >
 > **Overall: 20 RESOLVED · 12 PARTIALLY RESOLVED · 2 NOT RESOLVED.**
@@ -566,6 +566,13 @@
 >   (`views.py:327-333` `analysis_with_per_100g` applied in `RecognitionView`
 >   and `RecognitionDetailView`; `services.py:642-668`
 >   `per_100g_from_analysis`, quantized to 0.1 with ROUND_HALF_UP).
+>   Follow-up (same day): the analysis embedded in `candidates[0]` — the copy
+>   the client's "Fill form" button reads — was also enriched, via
+>   `candidates_with_per_100g` (`views.py:335-343`) applied when candidates
+>   are persisted (`:476`), in the detail GET (`:513`), the analyze save
+>   (`:560`), and the final detail response (`:599`); regression test
+>   `test_candidate_analysis_carries_server_derived_per_100g`
+>   (`tests.py:604`). Suite: 75 tests OK.
 > - **Client math removed:** `MealEditor.tsx` no longer computes per-100 g or
 >   totals — the client `estimate`/`toPer100g`/`customPortionTotalKcal` math is
 >   deleted; per-item rows, the footer total, and "Nutrition pending" now come
@@ -582,7 +589,7 @@
 > - **Tests:** `tests.py:323-390` — Decimal math parity (130×150/100 =
 >   195.00), inline values, unknown-nutrient `None` totals, cross-user food
 >   400, exact suggestion values (male 25y default: 2190 kcal/104/291/68),
->   null-when-insufficient, out-of-range 400. Suite: 74 tests OK.
+>   null-when-insufficient, out-of-range 400. Suite: 75 tests OK.
 > - **Rounding note:** client JS `Math.round` ≡ Python `ROUND_HALF_UP` for the
 >   positive values involved, so previously displayed numbers do not change.
 
@@ -659,7 +666,7 @@
 >   `test_food_log_audit_and_daily_summary_and_weekly_view`,
 >   `test_recognition_detail_rejects_untrusted_checkpoint_parameter`, plus the
 >   nutrition-preview/goal-suggestions suite (`tests.py:323-390`)
->   (`backend/core/tests.py`). Suite now 74 tests OK (1 skipped).
+>   (`backend/core/tests.py`). Suite now 75 tests OK (1 skipped).
 > - **Remaining:** no tests for `estimate_for_any_label`'s ungrounded path or
 >   `ensure_analyzed_catalog_foods`.
 

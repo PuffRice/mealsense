@@ -601,6 +601,38 @@ class RecognitionTests(TestCase):
         self.assertEqual(meal_res.status_code, 201, meal_res.content)
         self.assertEqual(meal_res.json()['items'][0]['recognition_result'], saved.id)
 
+    def test_candidate_analysis_carries_server_derived_per_100g(self):
+        """The "Fill form" flow reads candidate.analysis — it must include the
+        server-derived per-100 g values, not just the top-level analysis copy."""
+        analysis = {
+            'food_name': self.food.name,
+            'classification': {'predicted_label': 'grilled_chicken_salad', 'confidence': 0.9},
+            'portion': {'estimated_weight_g': 250},
+            'nutrition': {'calories_kcal': 450, 'protein_g': 50, 'carbohydrates_g': 15, 'fat_g': 12.5},
+            'ingredients': [],
+            'micronutrients': {},
+            'confidence': {},
+        }
+        canned = {
+            'status': 'completed',
+            'candidates': [{'name': self.food.name, 'category': 'Dish', 'confidence': 0.9,
+                            'analysis': analysis}],
+            'model_version': 'local:test', 'error_code': '',
+            'analysis': analysis,
+        }
+        with patch('core.views.recognize_with_provider', return_value=canned):
+            response = self.upload()
+        self.assertEqual(response.status_code, 201, response.content)
+        body = response.json()
+        expected = {'kcal_100g': '180.0', 'protein_100g': '20.0',
+                    'carbs_100g': '6.0', 'fat_100g': '5.0'}
+        self.assertEqual(body['analysis']['nutrition_per_100g'], expected)
+        self.assertEqual(body['candidates'][0]['analysis']['nutrition_per_100g'], expected)
+
+        detail = self.client.get(f"/api/v1/recognitions/{body['id']}/", HTTP_X_CSRFTOKEN=self.csrf)
+        self.assertEqual(detail.status_code, 200, detail.content)
+        self.assertEqual(detail.json()['candidates'][0]['analysis']['nutrition_per_100g'], expected)
+
     @override_settings(AI_PROVIDER='local', AI_LOCAL_CHECKPOINT='/missing/mealsense-checkpoint.pth')
     def test_missing_local_checkpoint_keeps_manual_logging_available(self):
         with patch('core.services._provider_request') as cloud:

@@ -332,6 +332,19 @@ def analysis_with_per_100g(analysis):
     return dict(analysis, nutrition_per_100g=per_100g) if per_100g is not None else analysis
 
 
+def candidates_with_per_100g(candidates):
+    """Enrich analyses embedded in prediction candidates (the copy the client's
+    "Fill form" button uses) with server-derived per-100 g values."""
+    if not candidates:
+        return candidates
+    return [
+        dict(candidate, analysis=analysis_with_per_100g(candidate['analysis']))
+        if isinstance(candidate, dict) and isinstance(candidate.get('analysis'), dict)
+        else candidate
+        for candidate in candidates
+    ]
+
+
 class NutritionPreviewView(APIView):
     """Server-side nutrition preview so the client stops duplicating per-100 g math (ADR-008)."""
 
@@ -460,6 +473,7 @@ class RecognitionView(APIView):
                     normalized_label=item['name'].casefold().strip(), rank=rank,
                     confidence=Decimal(str(item['confidence'])))
                 candidates.append(dict(item, food_id=food_id, result_id=str(saved_result.id)))
+            candidates = candidates_with_per_100g(candidates)
             prediction.candidates = candidates
             prediction.save(update_fields=['candidates'])
         messages = {
@@ -496,7 +510,7 @@ class RecognitionDetailView(APIView):
             'id': str(prediction.id),
             'image_id': str(prediction.image_id),
             'status': prediction.status,
-            'candidates': prediction.candidates,
+            'candidates': candidates_with_per_100g(prediction.candidates),
             'model_version': prediction.model_version,
             'error_code': prediction.error_code,
         }
@@ -543,9 +557,9 @@ class RecognitionDetailView(APIView):
                 )
 
             with transaction.atomic():
-                cands = list(prediction.candidates or [])
+                cands = candidates_with_per_100g(list(prediction.candidates or []))
                 if cands and isinstance(cands[0], dict):
-                    cands[0] = dict(cands[0], analysis=existing_analysis)
+                    cands[0] = dict(cands[0], analysis=analysis_with_per_100g(existing_analysis))
                 else:
                     cands = [{
                         'name': existing_analysis['food_name'],
@@ -553,7 +567,7 @@ class RecognitionDetailView(APIView):
                         'category': 'Dish',
                         'confidence': round(float(existing_analysis['classification']['confidence']), 3),
                         'food_id': None,
-                        'analysis': existing_analysis,
+                        'analysis': analysis_with_per_100g(existing_analysis),
                     }]
                 prediction.candidates = cands
                 prediction.status = 'completed'
@@ -582,7 +596,7 @@ class RecognitionDetailView(APIView):
                 'id': str(prediction.id),
                 'image_id': str(prediction.image_id),
                 'status': prediction.status,
-                'candidates': prediction.candidates,
+                'candidates': candidates_with_per_100g(prediction.candidates),
                 'analysis': analysis_with_per_100g(existing_analysis),
             },
             status=status.HTTP_200_OK,
