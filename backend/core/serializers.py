@@ -121,7 +121,55 @@ class DoctorAccessRequestSerializer(serializers.ModelSerializer):
                   'created_at', 'approved_at', 'expires_at', 'denied_at', 'revoked_at']
 
 
+class StructuredIngredientSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=160)
+    estimated_weight_g = serializers.FloatField(min_value=0.0)
+    ingredient_key = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    identification = serializers.ChoiceField(
+        choices=['visible', 'recipe_inferred'], required=False, allow_null=True
+    )
+    confidence = serializers.FloatField(required=False, allow_null=True)
+    nutrition_source = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    recipe_source = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    calories_kcal = serializers.FloatField(required=False, allow_null=True)
+    protein_g = serializers.FloatField(required=False, allow_null=True)
+    carbohydrates_g = serializers.FloatField(required=False, allow_null=True)
+    fat_g = serializers.FloatField(required=False, allow_null=True)
+
+
+class StructuredNutritionAnalysisSerializer(serializers.Serializer):
+    food_name = serializers.CharField(max_length=160)
+    canonical_catalog_name = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    food_class = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    classification = serializers.DictField()
+    portion = serializers.DictField()
+    ingredients = StructuredIngredientSerializer(many=True)
+    nutrition = serializers.DictField()
+    micronutrients = serializers.DictField()
+    confidence = serializers.DictField()
+    provenance = serializers.DictField(required=False)
+    observed_preparation_state = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    occluded_or_uncertain = serializers.BooleanField(required=False, default=False)
+    requires_user_confirmation = serializers.BooleanField(required=False, default=True)
+    warnings = serializers.ListField(child=serializers.CharField(), required=False, default=list)
+    explanation = serializers.CharField()
+    vlm_checkpoint = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    timing = serializers.DictField(required=False)
+
+
+class AnalyzedMealSaveSerializer(serializers.Serializer):
+    eaten_at = serializers.DateTimeField(required=False)
+    meal_type = serializers.ChoiceField(choices=['breakfast', 'lunch', 'dinner', 'snack'], default='lunch')
+    notes = serializers.CharField(allow_blank=True, required=False, max_length=1000, default='')
+    portion_weight_g = serializers.DecimalField(
+        max_digits=8, decimal_places=2, required=False, min_value=Decimal('1'), max_value=Decimal('10000')
+    )
+    save_mode = serializers.ChoiceField(choices=['ingredients', 'dish'], default='ingredients')
+    operation_id = serializers.UUIDField(required=False)
+
+
 class MealInputSerializer(serializers.Serializer):
+
     eaten_at = serializers.DateTimeField()
     meal_type = serializers.ChoiceField(choices=['breakfast', 'lunch', 'dinner', 'snack'])
     notes = serializers.CharField(allow_blank=True, required=False, max_length=1000)

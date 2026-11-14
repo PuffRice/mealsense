@@ -21,7 +21,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.exceptions import APIException
 from .models import (DoctorAccessRequest, Food, FoodImage, FoodNutrition, FoodPrediction, FoodServing,
                      IdempotencyRecord, Meal, MealItem, MediaDeletionJob,
-                     NutrientTarget, NutritionGoal, NutritionRecord,
+                     NutrientTarget, NutritionGoal, NutritionRecord, NutritionSource,
                      Profile, RecognitionResult, User)
 from .recognition_labels import model_search_names
 
@@ -166,17 +166,28 @@ def _gemini_candidates(api_key, model, image_bytes, mime):
 def recognize_with_provider(image_bytes, mime):
     """Single switch point for local or cloud recognition.
 
-    Returns {'status', 'candidates', 'model_version', 'error_code'} and never
-    raises for normal inference failures; missing/unapproved config counts as
-    unavailable so callers fall back to manual logging.
+    Returns {'status', 'candidates', 'model_version', 'error_code'} (plus optional
+    'analysis' when the DINOv3 + VLM pipeline runs) and never raises for normal
+    inference failures; missing/unapproved config counts as unavailable so callers
+    fall back to manual logging.
     """
     provider = getattr(settings, 'AI_PROVIDER', '')
+    if provider == 'dinov3_vlm':
+        return _attach_candidate_nutrition(recognize_dinov3_vlm(image_bytes))
     if provider == 'dinov3':
         from .dinov3_recognition import recognize_dinov3
-        return recognize_dinov3(image_bytes)
+        res = recognize_dinov3(image_bytes)
+        if res.get('status') == 'completed' and getattr(settings, 'AI_VLM_ENABLED', False):
+            try:
+                vlm_extra = _run_vlm_on_dinov3_candidates(image_bytes, res.get('candidates', []))
+                if vlm_extra:
+                    res['analysis'] = vlm_extra
+            except Exception:
+                logger.warning('Optional VLM enrichment skipped during dinov3 recognition', exc_info=True)
+        return _attach_candidate_nutrition(res)
     if provider == 'local':
         from .local_recognition import recognize_locally
-        return recognize_locally(image_bytes)
+        return _attach_candidate_nutrition(recognize_locally(image_bytes))
     if provider not in _DEFAULT_VISION_MODELS:
         return {'status': 'unavailable', 'candidates': [], 'model_version': '', 'error_code': 'MODEL_NOT_CONFIGURED'}
     api_key = (getattr(settings, 'AI_API_KEYS', {}) or {}).get(provider, '')
@@ -189,9 +200,243 @@ def recognize_with_provider(image_bytes, mime):
     except ProviderError as exc:
         return {'status': 'failed', 'candidates': [], 'model_version': '%s:%s' % (provider, model),
                 'error_code': str(exc)}
-    return {'status': 'completed',
-            'candidates': [dict(candidate, food_id=None) for candidate in candidates],
-            'model_version': '%s:%s' % (provider, model), 'error_code': ''}
+    return _attach_candidate_nutrition({
+        'status': 'completed',
+        'candidates': [dict(candidate, food_id=None) for candidate in candidates],
+        'model_version': '%s:%s' % (provider, model),
+        'error_code': '',
+    })
+
+
+def _attach_candidate_nutrition(res):
+    """Ensure every candidate and top-level response includes grounded nutrition analysis when available."""
+    if not isinstance(res, dict) or res.get('status') != 'completed':
+        return res
+    try:
+        from ml_models.inference.nutrition import NutritionValidationProvider
+        provider = NutritionValidationProvider()
+    except Exception:
+        return res
+
+    candidates = res.get('candidates') or []
+    top_analysis = res.get('analysis')
+    for idx, cand in enumerate(candidates):
+        if not isinstance(cand, dict):
+            continue
+        if idx == 0 and top_analysis and not cand.get('analysis'):
+            cand['analysis'] = top_analysis
+        if not cand.get('analysis'):
+            raw_label = cand.get('model_label') or cand.get('name', '')
+            display_name = cand.get('name', '')
+            conf = float(cand.get('confidence', 0.8))
+            est = provider.estimate_for_any_label(raw_label, display_name, conf)
+            if est is not None:
+                cand['analysis'] = est
+                if idx == 0 and top_analysis is None:
+                    top_analysis = est
+    if top_analysis is not None:
+        res['analysis'] = top_analysis
+    return res
+
+
+def _run_vlm_on_dinov3_candidates(image_bytes, candidates):
+    """Run VLM analysis on the top DINOv3 candidate and validate with Django serializer."""
+    if not candidates:
+        return None
+    top = candidates[0]
+    label = top.get('model_label') or top.get('name', '').lower().replace(' ', '_')
+    confidence = float(top.get('confidence', 0.0))
+    from ml_models.inference.vlm import analyze_with_vlm
+    from .serializers import StructuredNutritionAnalysisSerializer
+
+    checkpoint = getattr(settings, 'AI_VLM_CHECKPOINT', None)
+    device = getattr(settings, 'AI_VLM_DEVICE', None)
+    raw_analysis = analyze_with_vlm(
+        image=image_bytes,
+        predicted_label=label,
+        confidence=confidence,
+        checkpoint=checkpoint,
+        device=device,
+    )
+    serializer = StructuredNutritionAnalysisSerializer(data=raw_analysis)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+
+
+def recognize_dinov3_vlm(image_bytes):
+    """Run the full DINOv3 + Fine-Tuned VLM pipeline and format for Recognitions API."""
+    from .recognition_labels import model_display_name
+    from .serializers import StructuredNutritionAnalysisSerializer
+
+    try:
+        from ml_models.inference.pipeline import analyze_food_image
+        checkpoint = getattr(settings, 'AI_VLM_CHECKPOINT', None)
+        device = getattr(settings, 'AI_VLM_DEVICE', None)
+        top_k = getattr(settings, 'AI_DINOV3_TOP_K', 5)
+        pipeline_out = analyze_food_image(
+            image_bytes,
+            checkpoint=checkpoint,
+            device=device,
+            top_k=top_k,
+            run_vlm=True,
+        )
+        serializer = StructuredNutritionAnalysisSerializer(data=pipeline_out)
+        serializer.is_valid(raise_exception=True)
+        validated_analysis = serializer.validated_data
+    except (ImportError, ModuleNotFoundError):
+        logger.exception('DINOv3+VLM dependencies missing')
+        return {'status': 'unavailable', 'candidates': [], 'model_version': '', 'error_code': 'LOCAL_DEPENDENCIES_MISSING'}
+    except FileNotFoundError:
+        logger.exception('DINOv3+VLM model artifacts missing')
+        return {'status': 'unavailable', 'candidates': [], 'model_version': '', 'error_code': 'MODEL_NOT_CONFIGURED'}
+    except Exception:
+        logger.exception('DINOv3+VLM recognition pipeline failed')
+        return {'status': 'failed', 'candidates': [], 'model_version': '', 'error_code': 'LOCAL_MODEL_ERROR'}
+
+    top_preds = pipeline_out.get('classification', {}).get('top_predictions', [])
+    candidates = []
+    for idx, item in enumerate(top_preds):
+        cand_entry = {
+            'name': model_display_name(item['label']),
+            'model_label': item['label'],
+            'category': 'Dish',
+            'confidence': round(float(item['confidence']), 3),
+            'food_id': None,
+        }
+        if idx == 0:
+            cand_entry['analysis'] = validated_analysis
+        candidates.append(cand_entry)
+
+    ckpt_tag = validated_analysis.get('vlm_checkpoint') or 'mealsense-vlm-lora'
+    return {
+        'status': 'completed',
+        'model_version': f'local:dinov3+vlm:{ckpt_tag}',
+        'error_code': '',
+        'candidates': candidates,
+        'analysis': validated_analysis,
+    }
+
+
+def ensure_analyzed_catalog_foods(user, analysis):
+    """Ensure verified FCTB 2013 ingredient Food records and dish Food record exist for logging."""
+    from ml_models.inference.nutrition import NutritionValidationProvider
+
+    provider = NutritionValidationProvider()
+    ingredient_foods = {}
+    with transaction.atomic():
+        fctb_source, _ = NutritionSource.objects.get_or_create(
+            name='FCTB 2013 - INFS, University of Dhaka',
+            defaults={
+                'reference': 'Food Composition Table for Bangladesh (INFS, DU, 2013)',
+                'is_trusted': True,
+            },
+        )
+        for ing in analysis.get('ingredients', []):
+            ing_key = ing.get('ingredient_key') or ing.get('name', '')
+            rec = provider.lookup(ing_key)
+            if rec is None:
+                continue
+            # Effective per-100g cooked edible values accounting for cooking yield factor
+            yield_factor = max(0.1, float(rec.cooking_yield_factor))
+            kcal_100g = (Decimal(str(rec.calories_kcal_100g)) / Decimal(str(yield_factor))).quantize(TWO, rounding=ROUND_HALF_UP)
+            prot_100g = (Decimal(str(rec.protein_g_100g)) / Decimal(str(yield_factor))).quantize(TWO, rounding=ROUND_HALF_UP)
+            carb_100g = (Decimal(str(rec.carbohydrates_g_100g)) / Decimal(str(yield_factor))).quantize(TWO, rounding=ROUND_HALF_UP)
+            fat_100g = (Decimal(str(rec.fat_g_100g)) / Decimal(str(yield_factor))).quantize(TWO, rounding=ROUND_HALF_UP)
+
+            food_obj, _ = Food.objects.get_or_create(
+                created_by=None,
+                name=rec.display_name[:120],
+                defaults={
+                    'category': 'Ingredient (FCTB 2013)',
+                    'is_active': True,
+                    'is_verified': True,
+                    'kcal_100g': kcal_100g,
+                    'protein_100g': prot_100g,
+                    'carbs_100g': carb_100g,
+                    'fat_100g': fat_100g,
+                    'source': rec.source_citation[:160],
+                    'source_ref': f'FCTB Code {rec.fctb_code}',
+                },
+            )
+            if food_obj.kcal_100g is None:
+                food_obj.kcal_100g = kcal_100g
+                food_obj.protein_100g = prot_100g
+                food_obj.carbs_100g = carb_100g
+                food_obj.fat_100g = fat_100g
+                food_obj.save(update_fields=['kcal_100g', 'protein_100g', 'carbs_100g', 'fat_100g'])
+
+            if not NutritionRecord.objects.filter(food=food_obj, version=1).exists():
+                nutr_rec = NutritionRecord.objects.create(
+                    food=food_obj,
+                    source=fctb_source,
+                    version=1,
+                    basis_quantity=Decimal('100.00'),
+                    basis_unit='g edible',
+                    nutrient_values={
+                        'kcal': str(kcal_100g),
+                        'protein_g': str(prot_100g),
+                        'carbs_g': str(carb_100g),
+                        'fat_g': str(fat_100g),
+                    },
+                    verification_status='approved',
+                    calculation_method=f'FCTB 2013 raw-to-cooked yield factor {yield_factor}',
+                )
+                FoodNutrition.objects.get_or_create(food=food_obj, defaults={'active_record': nutr_rec})
+
+            ingredient_foods[ing.get('name')] = food_obj
+
+    return ingredient_foods
+
+
+@transaction.atomic
+def create_meal_from_analysis(user, prediction: FoodPrediction, analysis: dict, save_data: dict):
+    """Persist a Meal and ingredient-level (or dish-level) MealItems from a validated VLM analysis."""
+    eaten_at = save_data.get('eaten_at') or django_timezone.now()
+    meal_type = save_data.get('meal_type') or 'lunch'
+    notes = save_data.get('notes') or ''
+    save_mode = save_data.get('save_mode') or 'ingredients'
+    portion_override = save_data.get('portion_weight_g')
+    operation_id = save_data.get('operation_id')
+
+    est_total_g = Decimal(str(analysis.get('portion', {}).get('estimated_weight_g') or 100)).quantize(TWO, rounding=ROUND_HALF_UP)
+    scale = (Decimal(str(portion_override)) / est_total_g) if (portion_override and est_total_g > 0) else Decimal('1')
+
+    ingredient_foods = ensure_analyzed_catalog_foods(user, analysis)
+    top_result = RecognitionResult.objects.filter(session=prediction, rank=1).first()
+
+    items_payload = []
+    if save_mode == 'ingredients' and analysis.get('ingredients'):
+        for idx, ing in enumerate(analysis['ingredients']):
+            food_obj = ingredient_foods.get(ing.get('name'))
+            if food_obj is None:
+                continue
+            w_g = (Decimal(str(ing.get('estimated_weight_g', 0))) * scale).quantize(TWO, rounding=ROUND_HALF_UP)
+            if w_g <= 0:
+                continue
+            item_entry = {
+                'food_id': food_obj.id,
+                'grams': w_g,
+            }
+            if idx == 0 and top_result and (top_result.food_id is None or top_result.food_id == food_obj.id):
+                # Only attach recognition_result_id when food matches or is unlinked
+                if top_result.food_id is None:
+                    item_entry['recognition_result_id'] = top_result.id
+            items_payload.append(item_entry)
+
+    if not items_payload:
+        raise ValidationError({'items': 'No grounded ingredients available to save for this analysis.'})
+
+    meal_data = {
+        'eaten_at': eaten_at,
+        'meal_type': meal_type,
+        'notes': notes,
+        'image_id': prediction.image_id,
+        'items': items_payload,
+    }
+    if operation_id:
+        meal_data['operation_id'] = operation_id
+
+    return create_meal(user, meal_data)
 
 
 def matched_catalog_foods(candidates, user):

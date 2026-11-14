@@ -64,6 +64,50 @@ export type MealItem = {
   nutrition_basis_snapshot?: string;
   calculation_version?: string;
 };
+export type VLMAnalysis = {
+  food_name: string;
+  canonical_catalog_name?: string;
+  food_class?: string;
+  classification?: {
+    predicted_label: string;
+    confidence: number;
+  };
+  portion?: {
+    estimated_weight_g: number | null;
+    portion_description?: string;
+    visual_portion_estimate?: string;
+  };
+  ingredients?: {
+    name: string;
+    estimated_weight_g: number | null;
+    calories_kcal?: number | null;
+    protein_g?: number | null;
+    carbohydrates_g?: number | null;
+    fat_g?: number | null;
+    fiber_g?: number | null;
+    matched_fctb?: string | null;
+    source_type?: string;
+  }[];
+  nutrition?: {
+    calories_kcal: number | null;
+    protein_g: number | null;
+    carbohydrates_g: number | null;
+    fat_g: number | null;
+    fiber_g?: number | null;
+  };
+  micronutrients?: {
+    iron_mg?: number | null;
+    calcium_mg?: number | null;
+    potassium_mg?: number | null;
+  };
+  confidence?: {
+    food_identification?: number;
+    portion_estimation?: number;
+    nutrition_estimation?: number;
+  };
+  warnings?: string[];
+  explanation?: string;
+};
 export type Candidate = {
   name: string;
   model_label?: string;
@@ -71,6 +115,7 @@ export type Candidate = {
   confidence: number;
   food_id: string | null;
   result_id?: string;
+  analysis?: VLMAnalysis;
 };
 export type Meal = {
   id: string;

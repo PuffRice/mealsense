@@ -9,6 +9,7 @@ import type {
   Meal,
   MealInput,
   User,
+  VLMAnalysis,
 } from "./types";
 
 let csrf = "";
@@ -167,6 +168,7 @@ export async function uploadMealImage(image: File) {
     image_id: string;
     status: "completed" | "failed" | "unavailable";
     candidates: Candidate[];
+    analysis?: VLMAnalysis;
     model_version?: string;
     error_code?: string;
     message: string;

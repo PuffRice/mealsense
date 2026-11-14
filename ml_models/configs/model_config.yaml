@@ -1,0 +1,68 @@
+# MealSense Model & Inference Configuration
+# Paths can be relative to the project root (or backend root) or overridden via environment variables.
+
+classifier:
+  architecture: "dinov3_vit"
+  checkpoint_path: "ml_models/classifier/dinov3_dish_best.pth"
+  fallback_checkpoint_path: "backend/ml_models/dinov3/checkpoint.pth"
+  backbone_config_path: "ml_models/classifier/backbone_config.json"
+  classes_path: "ml_models/classifier/classes.json"
+  config_path: "ml_models/classifier/config.json"
+  image_size: 224
+  normalization_mean: [0.485, 0.456, 0.406]
+  normalization_std: [0.229, 0.224, 0.225]
+  top_k: 5
+  confidence_threshold: 0.35
+  confirmation_threshold: 0.65
+
+vlm:
+  # Selected checkpoint alias ("mealsense-vlm-lora", "checkpoint-147", or "mealsense-qwen-vl-lora")
+  selected_checkpoint: "mealsense-vlm-lora"
+  checkpoints_root: "ml_models/checkpoints"
+  checkpoints:
+    mealsense-vlm-lora:
+      adapter_path: "ml_models/checkpoints/mealsense-vlm-lora"
+      base_model_id: "HuggingFaceTB/SmolVLM-500M-Instruct"
+      local_base_model_dir: "../Mealsense_Models/mealsense_local_artifacts/SmolVLM-500M-Instruct"
+      architecture: "Idefics3ForConditionalGeneration"
+      processor_class: "Idefics3Processor"
+      use_peft: true
+    checkpoint-147:
+      adapter_path: "ml_models/checkpoints/mealsense-vlm-lora/checkpoint-147"
+      processor_fallback_path: "ml_models/checkpoints/mealsense-vlm-lora"
+      base_model_id: "HuggingFaceTB/SmolVLM-500M-Instruct"
+      local_base_model_dir: "../Mealsense_Models/mealsense_local_artifacts/SmolVLM-500M-Instruct"
+      architecture: "Idefics3ForConditionalGeneration"
+      processor_class: "Idefics3Processor"
+      use_peft: true
+    mealsense-qwen-vl-lora:
+      adapter_path: "ml_models/checkpoints/mealsense-qwen-vl-lora"
+      base_model_id: "Qwen/Qwen2.5-VL-3B-Instruct"
+      local_base_model_dir: "../Mealsense_Models/mealsense_local_artifacts/base_model/models--Qwen--Qwen2.5-VL-3B-Instruct"
+      architecture: "Qwen2_5_VLForConditionalGeneration"
+      processor_class: "Qwen2_5_VLProcessor"
+      use_peft: true
+
+  device: "auto" # "auto", "cuda", or "cpu"
+  dtype: "auto"  # "auto" selects bfloat16/float16 on CUDA, float32 on CPU
+  quantization:
+    enabled: false          # Set true for 2B/3B+ models or <4 GB VRAM
+    load_in_4bit: false
+    bnb_4bit_quant_type: "nf4"
+    bnb_4bit_use_double_quant: true
+    cpu_offload: false
+  image_processing:
+    image_size: 384
+    enable_image_splitting: false
+    max_image_pixels: 20000000
+    max_file_size_bytes: 8388608
+    allowed_formats: ["JPEG", "PNG", "WEBP"]
+  generation:
+    max_new_tokens: 256
+    do_sample: false
+    use_cache: true
+
+nutrition:
+  provider: "fctb_2013" # "fctb_2013", "django_catalog", or "none"
+  sqlite_db_path: "../Mealsense_Models/mealsense_local_artifacts/fctb_2013_nutrition.db"
+  allow_remote_fallback: false

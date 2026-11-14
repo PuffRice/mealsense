@@ -1,10 +1,18 @@
 import os
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / '.env', override=False)
+PROJECT_ROOT = BASE_DIR.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if 'test' not in sys.argv:
+    load_dotenv(PROJECT_ROOT / '.env', override=True)
+    load_dotenv(BASE_DIR / '.env', override=True)
+else:
+    load_dotenv(BASE_DIR / '.env', override=False)
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-only-change-me-before-deploying')
 DEBUG = os.environ.get('DJANGO_DEBUG', '1') == '1'
 if not DEBUG and SECRET_KEY == 'dev-only-change-me-before-deploying':
@@ -69,8 +77,9 @@ SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
-# Switch via env: AI_PROVIDER='' (off) | 'local' | 'openai' | 'gemini'.
-AI_PROVIDER = os.environ.get('AI_PROVIDER', '').strip().lower()
+# Switch via env: AI_PROVIDER='' (off) | 'local' | 'dinov3' | 'dinov3_vlm' | 'openai' | 'gemini'.
+_raw_ai_provider = '' if 'test' in sys.argv else os.environ.get('AI_PROVIDER', 'dinov3')
+AI_PROVIDER = _raw_ai_provider.strip().lower()
 AI_VISION_MODEL = os.environ.get('AI_VISION_MODEL', '').strip()
 AI_API_KEYS = {
     'openai': os.environ.get('OPENAI_API_KEY', ''),
@@ -84,6 +93,9 @@ AI_LOCAL_DEVICE = os.environ.get('AI_LOCAL_DEVICE', 'cpu').strip()
 AI_DINOV3_MODEL_DIR = os.environ.get('AI_DINOV3_MODEL_DIR', str(BASE_DIR / 'ml_models/dinov3'))
 AI_DINOV3_DEVICE = os.environ.get('AI_DINOV3_DEVICE', 'auto').strip().lower()
 AI_DINOV3_TOP_K = int(os.environ.get('AI_DINOV3_TOP_K', '5'))
+AI_VLM_CHECKPOINT = os.environ.get('AI_VLM_CHECKPOINT', 'mealsense-vlm-lora').strip()
+AI_VLM_DEVICE = os.environ.get('AI_VLM_DEVICE', 'auto').strip().lower()
+AI_VLM_ENABLED = os.environ.get('AI_VLM_ENABLED', '1').strip().lower() in ('1', 'true', 'yes')
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
     'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],

@@ -9,6 +9,7 @@ MODEL_CLASS_LABELS = {
     'fuchka': ('Fuchka', 'phuchka', 'pani puri'),
     'haleem': ('Haleem', 'halim'),
     'hilsha_fish': ('Hilsa fish', 'hilsha fish', 'ilish fish'),
+    'kacchi': ('Kacchi Biryani', 'kacchi', 'mutton kacchi biryani', 'biryani'),
     'kabab': ('Kebab', 'kabab'),
     'kacha_golla': ('Kacha golla', 'kacha golla'),
     'kala_bhuna': ('Kala bhuna', 'kala bhuna'),

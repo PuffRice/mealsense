@@ -23,11 +23,12 @@ from rest_framework.views import APIView
 
 from .models import (DoctorAccessRequest, Food, FoodImage, FoodPrediction, Meal, NutritionGoal,
                      NutritionRecord, NutritionSource, Profile, RecognitionResult, User)
-from .serializers import (DoctorAccessRequestSerializer, FoodSerializer, MealInputSerializer,
-                          MealSerializer, ProfileSerializer)
+from .serializers import (AnalyzedMealSaveSerializer, DoctorAccessRequestSerializer, FoodSerializer,
+                          MealInputSerializer, MealSerializer, ProfileSerializer,
+                          StructuredNutritionAnalysisSerializer)
 from .services import (DOCTOR_ANALYTICS_MAX_DAYS, DOCTOR_HISTORY_MAX_LIMIT, DOCTOR_REQUEST_PENDING_MESSAGE,
-                       GOAL_FIELDS, create_doctor_access_request, create_meal, date_range_window,
-                       date_window, decide_doctor_access_request, delete_private_image,
+                       GOAL_FIELDS, create_doctor_access_request, create_meal, create_meal_from_analysis,
+                       date_range_window, date_window, decide_doctor_access_request, delete_private_image,
                        delete_user_with_media, doctor_analytics, doctor_meal_history,
                        doctor_request_for_token, doctor_request_status_payload, goal_values_for_user,
                        matched_catalog_foods, owned_image, patient_timezone, provider_image_bytes,
@@ -396,7 +397,7 @@ class RecognitionView(APIView):
         upload.name = f'{uuid4().hex}.{extension}'
         checksum = sha256(upload.read()).hexdigest()
         upload.seek(0)
-        if settings.AI_PROVIDER in ('local', 'dinov3'):
+        if settings.AI_PROVIDER in ('local', 'dinov3', 'dinov3_vlm'):
             # Preserve the source pixels and EXIF for checkpoint preprocessing.
             provider_bytes, provider_mime = upload.read(), mime
         else:
@@ -426,22 +427,127 @@ class RecognitionView(APIView):
             'completed': 'These are suggestions only. Confirm the food and serving size before saving.',
             'failed': 'Recognition failed. Add food manually.',
         }
-        return Response({'id': str(prediction.id), 'image_id': str(stored.id), 'status': prediction.status,
-                         'candidates': prediction.candidates, 'model_version': prediction.model_version,
-                         'error_code': prediction.error_code,
-                         'message': messages.get(prediction.status, 'Recognition is not configured yet. Add food manually.')},
-                        status=201)
+        payload = {
+            'id': str(prediction.id),
+            'image_id': str(stored.id),
+            'status': prediction.status,
+            'candidates': prediction.candidates,
+            'model_version': prediction.model_version,
+            'error_code': prediction.error_code,
+            'message': messages.get(prediction.status, 'Recognition is not configured yet. Add food manually.'),
+        }
+        if 'analysis' in result and result['analysis'] is not None:
+            payload['analysis'] = result['analysis']
+        return Response(payload, status=201)
 
 
 class RecognitionDetailView(APIView):
-    def get(self, request, pk):
+    def get_object(self, request, pk):
         try:
-            prediction = FoodPrediction.objects.get(pk=pk, user=request.user)
+            return FoodPrediction.objects.select_related('image').get(pk=pk, user=request.user)
         except FoodPrediction.DoesNotExist:
             raise Http404
-        return Response({'id': str(prediction.id), 'image_id': str(prediction.image_id),
-                         'status': prediction.status, 'candidates': prediction.candidates,
-                         'model_version': prediction.model_version, 'error_code': prediction.error_code})
+
+    def get(self, request, pk):
+        prediction = self.get_object(request, pk)
+        analysis = None
+        if prediction.candidates and isinstance(prediction.candidates[0], dict):
+            analysis = prediction.candidates[0].get('analysis')
+        payload = {
+            'id': str(prediction.id),
+            'image_id': str(prediction.image_id),
+            'status': prediction.status,
+            'candidates': prediction.candidates,
+            'model_version': prediction.model_version,
+            'error_code': prediction.error_code,
+        }
+        if analysis is not None:
+            payload['analysis'] = analysis
+        return Response(payload)
+
+    def post(self, request, pk):
+        """Run VLM analysis (or save analyzed meal withingredient-level MealItems) for an owned recognition session."""
+        prediction = self.get_object(request, pk)
+        action = str(request.data.get('action', 'analyze')).strip().lower()
+
+        # Retrieve or compute structured VLM analysis
+        existing_analysis = None
+        if prediction.candidates and isinstance(prediction.candidates[0], dict):
+            existing_analysis = prediction.candidates[0].get('analysis')
+
+        if existing_analysis is None or action == 'analyze':
+            checkpoint = request.data.get('checkpoint') or getattr(settings, 'AI_VLM_CHECKPOINT', None)
+            device = request.data.get('device') or getattr(settings, 'AI_VLM_DEVICE', None)
+            try:
+                from ml_models.inference.pipeline import analyze_food_image
+                with prediction.image.file.open('rb') as img_fh:
+                    image_bytes = img_fh.read()
+                raw_analysis = analyze_food_image(
+                    image_bytes,
+                    user=request.user,
+                    checkpoint=checkpoint,
+                    device=device,
+                    run_vlm=True,
+                )
+                serializer = StructuredNutritionAnalysisSerializer(data=raw_analysis)
+                serializer.is_valid(raise_exception=True)
+                existing_analysis = serializer.validated_data
+            except FileNotFoundError:
+                return Response(
+                    {'error': 'Requested model or checkpoint is not available.', 'error_code': 'MODEL_NOT_CONFIGURED'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+            except Exception:
+                return Response(
+                    {'error': 'Food nutrition analysis failed.', 'error_code': 'LOCAL_MODEL_ERROR'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            with transaction.atomic():
+                cands = list(prediction.candidates or [])
+                if cands and isinstance(cands[0], dict):
+                    cands[0] = dict(cands[0], analysis=existing_analysis)
+                else:
+                    cands = [{
+                        'name': existing_analysis['food_name'],
+                        'model_label': existing_analysis['classification']['predicted_label'],
+                        'category': 'Dish',
+                        'confidence': round(float(existing_analysis['classification']['confidence']), 3),
+                        'food_id': None,
+                        'analysis': existing_analysis,
+                    }]
+                prediction.candidates = cands
+                prediction.status = 'completed'
+                prediction.save(update_fields=['candidates', 'status'])
+
+        if action == 'save_meal':
+            save_serializer = AnalyzedMealSaveSerializer(data=request.data)
+            save_serializer.is_valid(raise_exception=True)
+            _, created, meal_snapshot = create_meal_from_analysis(
+                request.user,
+                prediction,
+                existing_analysis,
+                save_serializer.validated_data,
+            )
+            return Response(
+                {
+                    'recognition_id': str(prediction.id),
+                    'analysis': existing_analysis,
+                    'meal': meal_snapshot,
+                },
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            )
+
+        return Response(
+            {
+                'id': str(prediction.id),
+                'image_id': str(prediction.image_id),
+                'status': prediction.status,
+                'candidates': prediction.candidates,
+                'analysis': existing_analysis,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class PrivateImageView(APIView):

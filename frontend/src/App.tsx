@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { WifiOff } from "lucide-react";
 import { Layout, type Page } from "./components/Layout";
 import { pageRevealVariants } from "./design/motion";
-import { AuthPage } from "./features/auth/AuthPage";
+import { LandingPage } from "./features/landing/LandingPage";
 import { Overview } from "./features/overview/Overview";
 import { MealsPage } from "./features/meals/MealsPage";
 import { MealEditor } from "./features/meals/MealEditor";
@@ -34,7 +34,7 @@ export default function App() {
   const [foods, setFoods] = useState<Food[]>([]);
   const [daily, setDaily] = useState<Daily | null>(null);
   const [weekly, setWeekly] = useState<Daily[]>([]);
-  const [editing, setEditing] = useState<Meal | null | "new">(null);
+  const [editing, setEditing] = useState<Meal | null | "new" | "camera">(null);
   const [dark, setDark] = useState(
     () => localStorage.getItem("mealsense-theme") === "dark",
   );
@@ -132,6 +132,11 @@ export default function App() {
     const timer = window.setInterval(checkRequests, 30000);
     return () => window.clearInterval(timer);
   }, [user, page]);
+  useEffect(() => {
+    if (!loading && !user && window.location.pathname !== "/") {
+      window.history.replaceState(null, "", "/");
+    }
+  }, [loading, user]);
   async function logout() {
     if (!online) {
       window.alert("Connect to the internet to securely log out.");
@@ -144,7 +149,12 @@ export default function App() {
       setMeals([]);
       setDaily(null);
       setWeekly([]);
+      setEditing(null);
+      setDataError("");
       setPage("overview");
+      if (window.location.pathname !== "/") {
+        window.history.replaceState(null, "", "/");
+      }
     } catch (cause) {
       window.alert(
         cause instanceof Error ? cause.message : "Could not log out.",
@@ -183,7 +193,13 @@ export default function App() {
       await clearLocalData();
       setUser(null);
       setMeals([]);
+      setDaily(null);
+      setWeekly([]);
+      setEditing(null);
       setPage("overview");
+      if (window.location.pathname !== "/") {
+        window.history.replaceState(null, "", "/");
+      }
     } catch (cause) {
       window.alert(
         cause instanceof Error ? cause.message : "Could not delete account.",
@@ -210,7 +226,7 @@ export default function App() {
     );
   if (!user)
     return (
-      <AuthPage
+      <LandingPage
         onSuccess={(active) => {
           setUser(active);
           void refresh(active);
@@ -226,6 +242,7 @@ export default function App() {
         page={page}
         onPage={setPage}
         onAdd={() => setEditing("new")}
+        onScanCamera={() => setEditing("camera")}
         onLogout={() => void logout()}
         dark={dark}
         onToggleTheme={() => setDark(!dark)}
@@ -330,7 +347,8 @@ export default function App() {
       <AnimatePresence>
         {editing && (
           <MealEditor
-            meal={editing === "new" ? null : editing}
+            meal={editing === "new" || editing === "camera" ? null : editing}
+            initialCameraOpen={editing === "camera"}
             userId={user.id}
             foods={foods}
             onClose={() => setEditing(null)}

@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Camera,
   ChevronRight,
   CircleHelp,
   ClipboardList,
@@ -32,6 +33,7 @@ export function Layout({
   page,
   onPage,
   onAdd,
+  onScanCamera,
   onLogout,
   dark,
   onToggleTheme,
@@ -42,6 +44,7 @@ export function Layout({
   page: Page;
   onPage: (page: Page) => void;
   onAdd: () => void;
+  onScanCamera?: () => void;
   onLogout: () => void;
   dark: boolean;
   onToggleTheme: () => void;
@@ -274,6 +277,18 @@ export function Layout({
           )}
         </button>
       </nav>
+
+      <motion.button
+        type="button"
+        className="camera-fab"
+        whileHover={{ scale: 1.07 }}
+        whileTap={{ scale: 0.93 }}
+        onClick={onScanCamera || onAdd}
+        title="Scan food with camera or upload photo"
+        aria-label="Scan food with camera or upload photo"
+      >
+        <Camera size={24} strokeWidth={2.2} />
+      </motion.button>
     </div>
   );
 }
