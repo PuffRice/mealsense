@@ -17,6 +17,10 @@ export type MealDraft = {
     key: string;
     food_id: string;
     grams: number;
+    /** How many pieces/servings of the food; defaults to 1 for older drafts. */
+    count?: number;
+    /** Weight of ONE piece/serving in grams; derived from grams if absent. */
+    unit_grams?: number;
     serving_id?: number;
     recognition_result_id?: string;
   }[];

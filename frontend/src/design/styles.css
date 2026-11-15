@@ -2421,6 +2421,52 @@ table tbody td {
   color: var(--text-soft);
 }
 
+.editor-item__count {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.editor-item__count button {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-input);
+  color: var(--text);
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  width: 20px;
+  height: 26px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.editor-item__count button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.editor-item__count input {
+  width: 34px;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 5px 3px;
+  background: var(--glass-input);
+  color: var(--text);
+  text-align: center;
+  font-weight: 700;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.editor-item__count input::-webkit-outer-spin-button,
+.editor-item__count input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .editor-item__amount {
   display: flex;
   align-items: center;
@@ -2486,6 +2532,14 @@ table tbody td {
 
 .custom-food p,
 .editor-note {
+  font-size: 11px;
+  color: var(--text-soft);
+  margin: 0;
+}
+
+.custom-food__count-hint {
+  align-self: center;
+  font-weight: 600;
   font-size: 11px;
   color: var(--text-soft);
   margin: 0;

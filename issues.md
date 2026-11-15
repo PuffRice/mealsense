@@ -766,3 +766,52 @@
     `SharingPage.tsx:77,84` confirm.
 11. **Set a shared cache in production** (issue 9 caveat) — the default
     LocMemCache keeps throttle counters per-process.
+
+---
+
+## Post-audit feature notes
+
+### Food count per meal item (2026-11-15)
+
+Users can log *how many pieces* of a food they ate (e.g. 3 pieces of
+bakorkhani); default is 1. The per-piece weight basis comes from the VLM
+portion estimate, a serving record, or manual entry, and all nutrition
+scales through the authoritative total grams — no new backend surface.
+
+- **Entry model** (`MealEditor.tsx:69-80`): `Entry` gains `count` (pieces,
+  default 1) and `unit_grams` (weight of ONE piece); `grams` remains the
+  authoritative total (`unit_grams × count`) sent to the server, so
+  `MealInput`, `MealItem`, and the server preview are unchanged.
+- **Normalization** (`MealEditor.tsx:82-105` `normalizeEntry`): old drafts
+  and existing meal items (which have no count) load as count 1 with
+  `unit_grams = grams`; applied on meal load, draft load, and every entry
+  edit. Draft schema made backward-compatible in `offline.ts:16-25`
+  (optional `count`/`unit_grams`).
+- **Add-food form** (`MealEditor.tsx:1172-1185`): "How many pieces?" field
+  (min 1, default 1) next to "Portion weight (g)". The portion field shows
+  the TOTAL for the count; editing count rescales it
+  (`changeCustomCount`, `:383-391`) and editing the total re-derives the
+  per-piece basis (`changeCustomPortion`, `:393-400`). A live hint shows the
+  VLM estimate for the whole count: `≈ {per-portion kcal × count} kcal for
+  N × ~unit g` (`:1179-1185`) — per-100 g fields stay on the correct basis
+  (ADR-008), only the total scales.
+- **Entry rows** (`MealEditor.tsx:1008-1041`): −/count/+ stepper per item
+  (`changeEntryCount`, `:358-376` clamps 1–99 and recomputes
+  `grams = unit × count`); a manual grams edit re-derives `unit_grams`; a
+  serving selection sets `unit_grams` to the serving's weight and rescales
+  the total (`:975-992`). The per-item and footer kcal come from the server
+  preview, which keys off grams, so they adjust automatically.
+- **Saving** (`saveCustomFoodToEntries`, `:503-516`): the entry stores
+  `count` and `unit_grams` alongside the total grams; the form resets to
+  count 1 / 100 g afterwards.
+- **Styles**: `.editor-item__count` stepper and
+  `.custom-food__count-hint` (`styles.css:2424-2468,2540-2544`); the mobile
+  wrap of `.editor-item` accommodates the extra control
+  (`styles.css:3380-3386`).
+- **Verification:** `npm run build` and `npm run lint` pass. Backend is
+  intentionally untouched (total grams remains the wire format), so the
+  backend suite is unaffected (75 tests OK, 1 skipped).
+- **Known limitation:** counts are per-piece multiples of a single portion
+  estimate; there is still no per-piece *shape/volume* recognition (issue 11
+  scope) — the count feature multiplies the VLM's one-piece weight, it does
+  not re-estimate weight from the photo.

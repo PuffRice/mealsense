@@ -69,10 +69,42 @@ const ALLOWED_UPLOAD_TYPES = new Set([
 type Entry = {
   key: string;
   food_id: string;
+  // `grams` is the authoritative total consumed weight sent to the server.
+  // `unit_grams` is the weight of ONE piece/serving (from the VLM portion
+  // estimate, a serving record, or the user) and `count` is how many pieces.
   grams: number;
+  count: number;
+  unit_grams: number;
   serving_id?: number;
   recognition_result_id?: string;
 };
+
+function normalizeEntry(entry: {
+  key: string;
+  food_id: string;
+  grams: number;
+  count?: number;
+  unit_grams?: number;
+  serving_id?: number;
+  recognition_result_id?: string;
+}): Entry {
+  const rawCount = entry.count;
+  const count =
+    typeof rawCount === "number" && Number.isFinite(rawCount) && rawCount > 0
+      ? Math.round(rawCount)
+      : 1;
+  const rawUnit = entry.unit_grams;
+  const unit =
+    typeof rawUnit === "number" && Number.isFinite(rawUnit) && rawUnit > 0
+      ? Math.round(rawUnit)
+      : Math.max(1, Math.round(entry.grams / count));
+  return {
+    ...entry,
+    grams: Math.max(1, Math.round(unit * count)),
+    count,
+    unit_grams: unit,
+  };
+}
 export function MealEditor({
   meal,
   initialCameraOpen = false,
@@ -98,13 +130,15 @@ export function MealEditor({
   const [when, setWhen] = useState(localDateTime(meal?.eaten_at, timezone));
   const [notes, setNotes] = useState(meal?.notes || "");
   const [entries, setEntries] = useState<Entry[]>(
-    meal?.items.map((item) => ({
-      key: item.id,
-      food_id: item.food,
-      grams: Number(item.grams),
-      serving_id: item.serving || undefined,
-      recognition_result_id: item.recognition_result || undefined,
-    })) || [],
+    meal?.items.map((item) =>
+      normalizeEntry({
+        key: item.id,
+        food_id: item.food,
+        grams: Number(item.grams),
+        serving_id: item.serving || undefined,
+        recognition_result_id: item.recognition_result || undefined,
+      }),
+    ) || [],
   );
   const [query, setQuery] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
@@ -113,6 +147,8 @@ export function MealEditor({
   const [custom, setCustom] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customPortionGrams, setCustomPortionGrams] = useState("100");
+  const [customCount, setCustomCount] = useState("1");
+  const [customUnitGrams, setCustomUnitGrams] = useState(100);
   const [customKcal, setCustomKcal] = useState("");
   const [customProtein, setCustomProtein] = useState("");
   const [customCarbs, setCustomCarbs] = useState("");
@@ -228,7 +264,9 @@ export function MealEditor({
         if (draft?.userId === userId) {
           setKind(draft.kind);
           setNotes(draft.notes);
-          setEntries(draft.entries);
+          // Older drafts have no count/unit_grams — normalize so every entry
+          // carries a valid piece count and per-piece weight basis.
+          setEntries(draft.entries.map(normalizeEntry));
         }
         setDraftReady(true);
       })
@@ -302,16 +340,63 @@ export function MealEditor({
   }
 
   function addFood(food: Food, recognitionResultId?: string, grams = 100) {
+    const total = grams > 0 ? Math.round(grams) : 100;
     setEntries((current) => [
       ...current,
-      {
+      normalizeEntry({
         key: crypto.randomUUID(),
         food_id: food.id,
-        grams: grams > 0 ? Math.round(grams) : 100,
+        grams: total,
+        count: 1,
+        unit_grams: total,
         recognition_result_id: recognitionResultId,
-      },
+      }),
     ]);
     setQuery("");
+  }
+
+  function changeEntryCount(entryKey: string, rawCount: number) {
+    // Count multiplies the per-piece weight basis; the grams input shows the
+    // resulting total, which is what the server preview consumes.
+    const count = Math.max(
+      1,
+      Math.round(Number.isFinite(rawCount) ? Math.min(99, rawCount) : 1),
+    );
+    setEntries((current) =>
+      current.map((item) =>
+        item.key === entryKey
+          ? {
+              ...item,
+              count,
+              grams: Math.max(1, Math.round(item.unit_grams * count)),
+            }
+          : item,
+      ),
+    );
+  }
+
+  const customCountNum = Math.max(
+    1,
+    Math.round(Number(customCount) || 1),
+  );
+
+  function changeCustomCount(value: string) {
+    setCustomCount(value);
+    // The "Portion weight" field shows the TOTAL for the entered count:
+    // per-piece weight × count. Editing the count rescales the total.
+    const count = Math.max(1, Math.round(Number(value) || 1));
+    setCustomPortionGrams(
+      String(Math.max(1, Math.round(customUnitGrams * count))),
+    );
+  }
+
+  function changeCustomPortion(value: string) {
+    setCustomPortionGrams(value);
+    // Editing the total directly re-derives the per-piece weight basis.
+    const grams = Number(value);
+    if (grams > 0) {
+      setCustomUnitGrams(Math.max(1, Math.round(grams / customCountNum)));
+    }
   }
 
   function populateFormWithAnalysis(
@@ -337,6 +422,9 @@ export function MealEditor({
       const roundedPortion = Math.max(1, Math.round(portionWeight));
       setCustomName(analysis.food_name || candidate?.name || "");
       setCustomPortionGrams(String(roundedPortion));
+      // The VLM portion is ONE piece/serving; the count starts at 1.
+      setCustomUnitGrams(roundedPortion);
+      setCustomCount("1");
 
       // Per-100 g values are derived server-side (nutrition_per_100g, ADR-008);
       // the client no longer divides per-portion numbers by the portion weight.
@@ -357,6 +445,8 @@ export function MealEditor({
         : undefined;
       if (existingFood && existingFood.kcal_100g !== null) {
         setCustomPortionGrams("100");
+        setCustomUnitGrams(100);
+        setCustomCount("1");
         setCustomKcal(String(existingFood.kcal_100g));
         setCustomProtein(
           existingFood.protein_100g != null
@@ -373,6 +463,8 @@ export function MealEditor({
         );
       } else {
         setCustomPortionGrams("100");
+        setCustomUnitGrams(100);
+        setCustomCount("1");
         setCustomKcal("");
         setCustomProtein("");
         setCustomCarbs("");
@@ -411,12 +503,18 @@ export function MealEditor({
         : "",
     } as Parameters<typeof foodsApi.create>[0]);
     onFoodCreated(food);
-    const newEntry: Entry = {
+    // The entry's `grams` is the total consumed weight: per-piece weight ×
+    // count. The displayed "Portion weight (g)" is that total; unit_grams is
+    // re-derived from it so the entry row's count stepper stays consistent.
+    const unitGrams = Math.max(1, Math.round(portionGramsNum / customCountNum));
+    const newEntry = normalizeEntry({
       key: crypto.randomUUID(),
       food_id: food.id,
-      grams: Math.round(portionGramsNum),
+      grams: Math.max(1, Math.round(unitGrams * customCountNum)),
+      count: customCountNum,
+      unit_grams: unitGrams,
       recognition_result_id: customRecognitionResultId,
-    };
+    });
     setEntries((current) => [...current, newEntry]);
     setCustom(false);
     setCustomName("");
@@ -425,6 +523,8 @@ export function MealEditor({
     setCustomCarbs("");
     setCustomFat("");
     setCustomPortionGrams("100");
+    setCustomCount("1");
+    setCustomUnitGrams(100);
     setCustomRecognitionResultId(undefined);
     return newEntry;
   }
@@ -877,13 +977,18 @@ export function MealEditor({
                         setEntries(
                           entries.map((item) =>
                             item.key === entry.key
-                              ? {
+                              ? normalizeEntry({
                                   ...item,
                                   serving_id: serving?.id,
-                                  grams: serving
+                                  unit_grams: serving
                                     ? Number(serving.weight_g)
+                                    : item.unit_grams,
+                                  grams: serving
+                                    ? Math.round(
+                                        Number(serving.weight_g) * item.count,
+                                      )
                                     : item.grams,
-                                }
+                                })
                               : item,
                           ),
                         );
@@ -900,24 +1005,64 @@ export function MealEditor({
                   )}
                 </div>
                 <div className="editor-item__amount">
+                  <div className="editor-item__count">
+                    <button
+                      type="button"
+                      aria-label={`One fewer ${food?.name}`}
+                      disabled={entry.count <= 1}
+                      onClick={() =>
+                        changeEntryCount(entry.key, entry.count - 1)
+                      }
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      max="99"
+                      value={entry.count}
+                      onChange={(event) =>
+                        changeEntryCount(
+                          entry.key,
+                          Number(event.target.value) || 1,
+                        )
+                      }
+                      aria-label={`How many ${food?.name}`}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`One more ${food?.name}`}
+                      onClick={() => changeEntryCount(entry.key, entry.count + 1)}
+                    >
+                      +
+                    </button>
+                  </div>
                   <input
                     type="number"
                     min="1"
                     max="10000"
                     value={entry.grams}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const grams = Number(event.target.value);
                       setEntries(
                         entries.map((item) =>
                           item.key === entry.key
-                            ? {
+                            ? normalizeEntry({
                                 ...item,
-                                grams: Number(event.target.value),
+                                grams: Math.max(1, Math.round(grams) || 1),
+                                unit_grams:
+                                  grams > 0
+                                    ? Math.max(
+                                        1,
+                                        Math.round(grams / item.count),
+                                      )
+                                    : item.unit_grams,
                                 serving_id: undefined,
-                              }
+                              })
                             : item,
                         ),
-                      )
-                    }
+                      );
+                    }}
                     aria-label={`Grams of ${food?.name}`}
                   />
                   <span>g</span>
@@ -1019,10 +1164,27 @@ export function MealEditor({
                   min="1"
                   max="10000"
                   value={customPortionGrams}
-                  onChange={(event) =>
-                    setCustomPortionGrams(event.target.value)
-                  }
+                  onChange={(event) => changeCustomPortion(event.target.value)}
                 />
+              </div>
+              <div className="custom-food__grid">
+                <Field
+                  label="How many pieces?"
+                  type="number"
+                  min="1"
+                  max="99"
+                  value={customCount}
+                  onChange={(event) => changeCustomCount(event.target.value)}
+                />
+                <p className="custom-food__count-hint">
+                  {vlmAnalysis?.nutrition?.calories_kcal != null
+                    ? `≈ ${Math.round(
+                        vlmAnalysis.nutrition.calories_kcal * customCountNum,
+                      )} kcal for ${customCountNum} × ~${Math.round(
+                        customUnitGrams,
+                      )} g (AI estimate)`
+                    : `Total weight: ${customPortionGrams || 0} g`}
+                </p>
               </div>
               <div className="custom-food__grid">
                 <Field
